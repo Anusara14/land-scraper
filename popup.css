@@ -724,3 +724,31 @@ body {
 .hidden {
   display: none !important;
 }
+
+/* ============================================
+   Footer
+   ============================================ */
+.footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  border-radius: 12px;
+  font-size: 10px;
+  color: #555;
+}
+
+.footer a {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #666;
+  text-decoration: none;
+}
+
+.github-icon {
+  width: 14px;
+  height: 14px;
+}
