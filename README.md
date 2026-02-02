@@ -1,212 +1,142 @@
-# 🏠 Sri Lanka Land Scraper - Chrome Extension
+# Sri Lanka Land Scraper
 
 A Chrome Extension (Manifest V3) for scraping land valuation data from Sri Lankan property websites. Built for Urban Informatics research and QGIS dataset creation.
 
 ## Features
 
-- ✅ **Dual Site Support**: Works on ikman.lk and lankapropertyweb.com
-- ✅ **Auto-Pagination**: Automatically navigates through multiple pages
-- ✅ **Smart Data Extraction**: Extracts title, price, size, location, and coordinates
-- ✅ **Price Per Perch Calculation**: Intelligently calculates per-perch pricing
-- ✅ **Location Filtering**: Filter listings by target Municipal Council areas
-- ✅ **QGIS-Ready Export**: Exports to CSV with lat/lng columns for direct import
-- ✅ **Live Progress**: Real-time counter showing scraped listings and pages
+- **Dual Site Support** - Works on ikman.lk and lankapropertyweb.com
+- **Auto-Pagination** - Automatically navigates through multiple pages
+- **Smart Data Extraction** - Extracts title, price, size, location, and coordinates
+- **Price Per Perch Calculation** - Intelligently calculates per-perch pricing
+- **Custom Location Filtering** - Add, remove, and manage target areas dynamically
+- **GND to Municipal Council Mapping** - 1,253 GND entries mapped to 28 Municipal Councils
+- **QGIS-Ready Export** - Exports to CSV with lat/lng columns for direct import
+- **Live Progress** - Real-time counter showing scraped listings and pages
+- **Storage Monitoring** - Visual progress bar with warning thresholds
+- **Modern Dark UI** - Clean interface with Inter font and cyan accent theme
 
-## Target Municipal Council Areas
+## Supported Municipal Councils
 
-The extension can filter listings to these specific areas:
+The extension includes official GND (Grama Niladhari Division) mappings for 28 Municipal Councils:
 
-### Kaduwela Municipal Council
-Battaramulla, Pelawatta, Thalawathugoda, Malabe, Athurugiriya, Kaduwela, Ranala, Hewagama, Hokandara
+Akurana, Ambatenna, Delthota, Doluwa, Gampola, Gangawata Korale, Harispattuwa, Hatharaliyadda, Kaduwela, Kandy Four Gravets, Kundasale, Medadumbara, Menikhinna, Minipe, Panvila, Pasbage Korale, Pathadumbara, Pathahewaheta, Poojapitiya, Sri Jayawardenepura Kotte, Talatuoya, Thumpane, Udadumbara, Udapalatha, Udunuwara, Ududumbara, Yatinuwara, and more.
 
-### Sri Jayawardenepura Kotte Municipal Council
-Rajagiriya, Ethul Kotte, Pita Kotte, Nawala, Nugegoda, Pagoda, Gangodawila, Welikada
-
-### Colombo Municipal Council
-Mattakkuliya, Modara, Borella, Cinnamon Gardens, Havelock Town, Wellawatta, Pamankada, Kirulapona
-
----
-
-## How to Load This Extension in Chrome
+## Installation
 
 ### Step 1: Open Chrome Extensions Page
 1. Open Google Chrome
 2. Type `chrome://extensions` in the address bar and press Enter
-3. Or go to **Menu (⋮)** → **More Tools** → **Extensions**
 
 ### Step 2: Enable Developer Mode
-1. Look for the **"Developer mode"** toggle in the top-right corner
-2. Click it to turn it **ON** (toggle should be blue)
+1. Find the **Developer mode** toggle in the top-right corner
+2. Turn it **ON**
 
 ### Step 3: Load the Extension
-1. Click the **"Load unpacked"** button that appears
-2. Navigate to this folder: `E:\Projects\land-scraper`
-3. Select the folder and click **"Select Folder"**
+1. Click **Load unpacked**
+2. Navigate to this folder and select it
+3. Click **Select Folder**
 
 ### Step 4: Verify Installation
-- You should see **"Sri Lanka Land Scraper"** in your extensions list
-- A house icon (🏠) should appear in your Chrome toolbar
-- If you don't see the icon, click the puzzle piece icon (🧩) and pin the extension
+- You should see **Sri Lanka Land Scraper** in your extensions list
+- A house icon should appear in your Chrome toolbar
+- If hidden, click the puzzle icon and pin the extension
 
----
-
-## How to Use
+## Usage
 
 ### 1. Navigate to a Property Listing Page
-Go to one of these URLs:
-- **ikman.lk**: https://ikman.lk/en/ads/sri-lanka/land
-- **lankapropertyweb.com**: https://www.lankapropertyweb.com/land/
 
-### 2. Open the Extension Popup
+**ikman.lk**
+```
+https://ikman.lk/en/ads/sri-lanka/land
+```
+
+**lankapropertyweb.com**
+```
+https://www.lankapropertyweb.com/land/
+```
+
+### 2. Open the Extension
 Click the extension icon in your Chrome toolbar
 
 ### 3. Configure Settings
-Expand the **⚙️ Scraping Settings** section to configure:
+Expand the **Settings** panel to configure:
 
-- **Only scrape target locations**: Filter listings by Municipal Council areas (enabled by default)
-- **Visit detail pages for coordinates**: Enable to fetch lat/lng from each listing's detail page (slower but more complete data)
-- **Page delay slider**: Adjust delay between pages (2-5 seconds) to avoid rate limiting
+| Setting | Description |
+|---------|-------------|
+| Filter by target locations | Only scrape listings in your target areas |
+| Fetch coordinates from detail pages | Visit each listing to get lat/lng (slower) |
+| Page delay | Adjust delay between pages (2-5 seconds) |
+| Target Locations | Add/remove custom locations to filter |
 
-### 4. Monitor Storage
-The popup shows storage usage with a progress bar:
-- **Green**: Normal usage
-- **Yellow**: Approaching limit (>80%)
-- **Red**: Critical (>90%) - export data soon!
+### 4. Manage Target Locations
+- Click **+** to add a new location
+- Click **x** on a tag to remove it
+- Click **Reset to defaults** to restore original list
+- Location matching is case-insensitive
 
-### 5. Start Scraping
-1. Click **"▶️ Start Scraping"**
-2. Watch the live counter update as listings are scraped
-3. The extension will automatically navigate to the next page
+### 5. Monitor Progress
+- **LISTINGS** - Total scraped count
+- **PAGES** - Pages processed
+- **Status dot** - Idle (cyan), Scraping (yellow), Stopped (red), Done (green)
+- **Storage bar** - Green (<80%), Yellow (80-90%), Red (>90%)
 
-### 6. Stop Scraping (Optional)
-Click **"⏹️ Stop"** at any time to pause scraping
-
-### 7. Download Your Data
-- **📥 Download CSV**: Export all scraped data
-- **📤 Export & Clear**: Export and then clear data to free storage (for large datasets)
-- The file will be named `sri_lanka_land_data_YYYY-MM-DD.csv`
-
-### 8. Clear Data
-Click **"🗑️ Clear Data"** to reset and start fresh
-
----
+### 6. Control Scraping
+| Button | Action |
+|--------|--------|
+| Start | Begin scraping from current page |
+| Stop | Pause scraping |
+| Download CSV | Export all data to CSV file |
+| Export + Clear | Export data and clear storage |
+| Clear All Data | Delete all scraped data |
 
 ## CSV Output Format
 
-The exported CSV contains these columns (QGIS-compatible):
+The exported CSV is QGIS-compatible with these columns:
 
 | Column | Description |
 |--------|-------------|
-| `id` | Unique row identifier |
-| `title` | Listing title/description |
-| `address` | Location/address text |
-| `municipal_council` | Detected Municipal Council area |
-| `price_total` | Total price in LKR |
-| `price_per_perch` | Calculated price per perch |
-| `price_raw` | Original price text from website |
-| `size_perches` | Land size in perches |
-| `latitude` | GPS latitude (if available) |
-| `longitude` | GPS longitude (if available) |
-| `source` | Source website |
-| `url` | Link to original listing |
-| `scraped_date` | Date of scraping |
+| id | Unique row identifier |
+| title | Property listing title |
+| price | Price in LKR |
+| pricePerPerch | Calculated price per perch |
+| size | Land size in perches |
+| location | Full location string |
+| municipalCouncil | Mapped MC from GND data |
+| latitude | GPS latitude (if available) |
+| longitude | GPS longitude (if available) |
+| url | Direct link to listing |
+| source | Website source (ikman/lpw) |
+| scrapedAt | Timestamp of scrape |
 
----
-
-## Importing to QGIS
-
-### Step 1: Open QGIS
-Launch QGIS Desktop
-
-### Step 2: Add Delimited Text Layer
-1. Go to **Layer** → **Add Layer** → **Add Delimited Text Layer**
-2. Or press `Ctrl+Shift+T`
-
-### Step 3: Configure Import
-1. **File name**: Browse to your downloaded CSV file
-2. **File format**: CSV
-3. **Geometry Definition**: 
-   - Select **Point coordinates**
-   - X field: `longitude`
-   - Y field: `latitude`
-4. **Geometry CRS**: Select `EPSG:4326 - WGS 84`
-
-### Step 4: Add Layer
-Click **Add** to import the data as a point layer
-
----
-
-## Price Per Perch Calculation Logic
-
-The extension uses smart heuristics to calculate price per perch:
-
-1. **If marked "per perch"**: Uses the stated price directly
-2. **If price > 5,000,000 AND size < 50 perches**: Assumes total price, divides by size
-3. **If price < 500,000**: Assumes it's already per perch
-4. **Otherwise**: Assumes total price and calculates per perch
-
----
-
-## File Structure
+## Project Structure
 
 ```
 land-scraper/
-├── manifest.json      # Extension manifest (MV3)
-├── popup.html         # Popup UI
-├── popup.css          # Popup styling
-├── popup.js           # Popup logic
-├── content.js         # Page scraping script
-├── background.js      # Service worker
+├── manifest.json        # Extension configuration (MV3)
+├── background.js        # Service worker for downloads & storage
+├── content.js           # Scraping logic for both sites
+├── gnd_mapping.js       # GND to Municipal Council mapping (1,253 entries)
+├── popup.html           # Extension popup UI
+├── popup.css            # Dark theme styles
+├── popup.js             # Popup logic and event handlers
 ├── icons/
-│   ├── icon16.png     # 16x16 icon
-│   ├── icon48.png     # 48x48 icon
-│   └── icon128.png    # 128x128 icon
-├── create-icons.js    # Icon generator (optional)
-└── README.md          # This file
+│   ├── icon16.png
+│   ├── icon48.png
+│   └── icon128.png
+└── README.md
 ```
 
----
+## Technical Details
 
-## Troubleshooting
-
-### "Cannot scrape on this website"
-- Make sure you're on ikman.lk or lankapropertyweb.com
-- Refresh the page and try again
-
-### Extension not responding after page navigation
-- The scraper should auto-resume after page load
-- If not, click Start Scraping again
-
-### No listings found
-- Website structure may have changed
-- Check browser console (F12) for errors
-- Try refreshing the page
-
-### Empty coordinates
-- **Enable "Visit detail pages for coordinates"** in settings for better coordinate extraction
-- ikman.lk may not always expose coordinates even on detail pages
-- lankapropertyweb.com has better coordinate availability
-- Consider manually geocoding addresses in QGIS
-
-### Storage full warning
-- Use **"📤 Export & Clear"** to export data and free up storage
-- You can do multiple export sessions and combine CSVs in QGIS
-
----
-
-## Notes
-
-- **Rate Limiting**: Adjustable delay (2-5 seconds) between pages - use higher values if experiencing blocks
-- **Storage Limit**: Chrome storage limit is ~10MB (~50,000+ listings). Use incremental export for large datasets.
-- **Detail Page Scraping**: Slower but fetches coordinates from each listing's detail page
-- **Website Changes**: If websites update their structure, selectors may need updating
-
----
+- **Manifest Version**: 3 (Chrome MV3 compliant)
+- **Content Scripts**: Injected on ikman.lk and lankapropertyweb.com
+- **Storage**: Uses chrome.storage.local (5MB limit)
+- **Downloads**: Base64 data URLs (MV3 compatible, no Blob API)
+- **Location Matching**: Case-insensitive substring matching
+- **GND Mapping**: Official Sri Lanka GND to MC mapping from CSV dataset
 
 ## License
 
-This extension is for educational and research purposes only. Please respect the terms of service of the websites being scraped.
-
----
+MIT License - [Anusara14](https://github.com/Anusara14)
 
 *Built for Urban Informatics Research - February 2026*
