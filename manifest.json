@@ -1,0 +1,56 @@
+{
+  "manifest_version": 3,
+  "name": "Sri Lanka Land Scraper",
+  "version": "1.0.0",
+  "description": "Scrape land valuation data from ikman.lk and lankapropertyweb.com for Urban Informatics research",
+  "author": "Urban Informatics Student",
+  
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting",
+    "downloads",
+    "contextMenus",
+    "alarms"
+  ],
+  
+  "host_permissions": [
+    "*://ikman.lk/*",
+    "*://www.ikman.lk/*",
+    "*://lankapropertyweb.com/*",
+    "*://www.lankapropertyweb.com/*"
+  ],
+  
+  "background": {
+    "service_worker": "background.js"
+  },
+  
+  "content_scripts": [
+    {
+      "matches": [
+        "*://ikman.lk/*",
+        "*://www.ikman.lk/*",
+        "*://lankapropertyweb.com/*",
+        "*://www.lankapropertyweb.com/*"
+      ],
+      "js": ["gnd_mapping.js", "content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    },
+    "default_title": "Sri Lanka Land Scraper"
+  },
+  
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
