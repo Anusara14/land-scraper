@@ -1,5 +1,5 @@
 /**
- * popup.js - Popup UI Controller for Land Scraper Extension
+ * popup.js - Brutalist Terminal UI Controller for Land Scraper Extension
  * Handles user interactions and communicates with content script and background worker
  */
 
@@ -18,43 +18,49 @@ const DEFAULT_LOCATIONS = [
 
 // DOM Elements
 const elements = {
-  currentSite: document.getElementById('currentSite'),
-  status: document.getElementById('status'),
-  statusIndicator: document.getElementById('statusIndicator'),
+  statusBadge: document.getElementById('statusBadge'),
   listingsCount: document.getElementById('listingsCount'),
   pagesCount: document.getElementById('pagesCount'),
-  filterLocations: document.getElementById('filterLocations'),
-  scrapeDetails: document.getElementById('scrapeDetails'),
-  delaySlider: document.getElementById('delaySlider'),
-  delayValue: document.getElementById('delayValue'),
   storagePercent: document.getElementById('storagePercent'),
   storageProgress: document.getElementById('storageProgress'),
   storageWarning: document.getElementById('storageWarning'),
-  settingsToggle: document.getElementById('settingsToggle'),
-  settingsContent: document.getElementById('settingsContent'),
+  scrapeDetailsToggle: document.getElementById('scrapeDetailsToggle'),
+  delaySelector: document.getElementById('delaySelector'),
+  filterLocationsToggle: document.getElementById('filterLocationsToggle'),
+  configLocationsBtn: document.getElementById('configLocationsBtn'),
   locationsList: document.getElementById('locationsList'),
-  addLocationBtn: document.getElementById('addLocationBtn'),
-  addLocationForm: document.getElementById('addLocationForm'),
   newLocationInput: document.getElementById('newLocationInput'),
-  confirmAddLocation: document.getElementById('confirmAddLocation'),
-  cancelAddLocation: document.getElementById('cancelAddLocation'),
+  addLocationBtn: document.getElementById('addLocationBtn'),
   resetLocationsBtn: document.getElementById('resetLocationsBtn'),
   startBtn: document.getElementById('startBtn'),
   stopBtn: document.getElementById('stopBtn'),
   downloadBtn: document.getElementById('downloadBtn'),
   exportIncrementalBtn: document.getElementById('exportIncrementalBtn'),
   clearBtn: document.getElementById('clearBtn'),
-  clearLogBtn: document.getElementById('clearLogBtn'),
-  logContainer: document.getElementById('logContainer')
+  logContainer: document.getElementById('logContainer'),
+  settingsBtn: document.getElementById('settingsBtn'),
+  settingsModal: document.getElementById('settingsModal'),
+  closeModalBtn: document.getElementById('closeModalBtn')
 };
 
 // State
 let currentTabId = null;
 let customLocations = [...DEFAULT_LOCATIONS];
+let scrapeDetailsEnabled = false;
+let filterLocationsEnabled = true;
+let currentDelay = 2;
 
-// Storage limit (10MB for chrome.storage.local)
-const STORAGE_LIMIT = 10 * 1024 * 1024;
+// Storage limit (5MB for chrome.storage.local)
+const STORAGE_LIMIT = 5 * 1024 * 1024;
 const STORAGE_WARNING_THRESHOLD = 0.8;
+
+/**
+ * Format timestamp for log entries
+ */
+function getTimestamp() {
+  const now = new Date();
+  return now.toLocaleTimeString('en-US', { hour12: false });
+}
 
 /**
  * Add entry to activity log
@@ -62,7 +68,7 @@ const STORAGE_WARNING_THRESHOLD = 0.8;
 function addLog(message, type = '') {
   const entry = document.createElement('div');
   entry.className = `log-entry ${type}`;
-  entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+  entry.textContent = `[${getTimestamp()}] ${message.toUpperCase().replace(/ /g, '_')}`;
   elements.logContainer.insertBefore(entry, elements.logContainer.firstChild);
   
   while (elements.logContainer.children.length > 50) {
@@ -71,13 +77,26 @@ function addLog(message, type = '') {
 }
 
 /**
- * Update status display
+ * Update status badge
  */
 function setStatus(status) {
-  elements.status.textContent = status.toUpperCase();
+  elements.statusBadge.className = `status-badge ${status}`;
   
-  if (elements.statusIndicator) {
-    elements.statusIndicator.className = `status-dot ${status}`;
+  switch (status) {
+    case 'idle':
+      elements.statusBadge.textContent = 'SYS_STATUS: IDLE';
+      break;
+    case 'scraping':
+      elements.statusBadge.textContent = 'SYS_STATUS: ACTIVE';
+      break;
+    case 'stopped':
+      elements.statusBadge.textContent = 'SYS_STATUS: HALTED';
+      break;
+    case 'done':
+      elements.statusBadge.textContent = 'SYS_STATUS: COMPLETE';
+      break;
+    default:
+      elements.statusBadge.textContent = 'SYS_STATUS: IDLE';
   }
 }
 
@@ -90,7 +109,7 @@ function updateButtons(isScraping) {
 }
 
 /**
- * Update storage usage indicator
+ * Update storage usage indicator with segmented progress
  */
 async function updateStorageUsage() {
   try {
@@ -99,19 +118,33 @@ async function updateStorageUsage() {
     if (response && response.success) {
       const percent = response.percent;
       const usedMB = (response.usedBytes / 1024 / 1024).toFixed(2);
+      const totalMB = (STORAGE_LIMIT / 1024 / 1024).toFixed(2);
       
-      elements.storagePercent.textContent = `${percent.toFixed(1)}% ${usedMB}MB`;
-      elements.storageProgress.style.width = `${Math.min(percent, 100)}%`;
+      elements.storagePercent.textContent = `${usedMB}MB / ${totalMB}MB`;
       
-      elements.storageProgress.classList.remove('warning', 'critical');
+      // Update segmented progress bar
+      const segments = elements.storageProgress.querySelectorAll('.segment');
+      const activeCount = Math.ceil((percent / 100) * segments.length);
+      
+      segments.forEach((segment, index) => {
+        segment.className = 'segment';
+        if (index < activeCount) {
+          if (percent >= 90) {
+            segment.classList.add('critical');
+          } else if (percent >= 80) {
+            segment.classList.add('warning');
+          } else {
+            segment.classList.add('active');
+          }
+        }
+      });
+      
       if (percent >= 90) {
-        elements.storageProgress.classList.add('critical');
         elements.storageWarning.classList.remove('hidden');
-        elements.storageWarning.textContent = 'Storage critical! Export data immediately.';
+        elements.storageWarning.textContent = 'CRITICAL: STORAGE_FULL // EXPORT_IMMEDIATELY';
       } else if (percent >= STORAGE_WARNING_THRESHOLD * 100) {
-        elements.storageProgress.classList.add('warning');
         elements.storageWarning.classList.remove('hidden');
-        elements.storageWarning.textContent = 'Storage nearly full. Consider exporting data.';
+        elements.storageWarning.textContent = 'WARNING: STORAGE_APPROACHING_LIMIT';
       } else {
         elements.storageWarning.classList.add('hidden');
       }
@@ -122,16 +155,25 @@ async function updateStorageUsage() {
 }
 
 /**
- * Update delay slider display and track fill
+ * Update delay selector UI
  */
-function updateDelayDisplay() {
-  const value = parseFloat(elements.delaySlider.value);
-  const min = parseFloat(elements.delaySlider.min);
-  const max = parseFloat(elements.delaySlider.max);
-  const percent = ((value - min) / (max - min)) * 100;
-  
-  elements.delayValue.textContent = `${value}s`;
-  elements.delaySlider.style.background = `linear-gradient(to right, #00d4ff 0%, #00d4ff ${percent}%, #333 ${percent}%, #333 100%)`;
+function updateDelaySelector(delay) {
+  const options = elements.delaySelector.querySelectorAll('.delay-option');
+  options.forEach(opt => {
+    if (parseFloat(opt.dataset.delay) === delay) {
+      opt.classList.add('active');
+    } else {
+      opt.classList.remove('active');
+    }
+  });
+}
+
+/**
+ * Toggle checkbox state
+ */
+function toggleCheckbox(element) {
+  element.classList.toggle('checked');
+  return element.classList.contains('checked');
 }
 
 /**
@@ -144,13 +186,8 @@ function renderLocations() {
     const tag = document.createElement('div');
     tag.className = 'location-tag';
     tag.innerHTML = `
-      <span>${location}</span>
-      <button class="remove-btn" data-index="${index}" title="Remove">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <line x1="18" y1="6" x2="6" y2="18"/>
-          <line x1="6" y1="6" x2="18" y2="18"/>
-        </svg>
-      </button>
+      <span>${location.toUpperCase()}</span>
+      <button class="remove-btn" data-index="${index}" title="Remove">×</button>
     `;
     elements.locationsList.appendChild(tag);
   });
@@ -180,7 +217,7 @@ async function addLocation(location) {
   customLocations.push(trimmed);
   await saveLocations();
   renderLocations();
-  addLog(`Added location: ${trimmed}`, 'success');
+  addLog(`LOCATION_ADDED: ${trimmed}`, 'success');
 }
 
 /**
@@ -190,7 +227,7 @@ async function removeLocation(index) {
   const removed = customLocations.splice(index, 1)[0];
   await saveLocations();
   renderLocations();
-  addLog(`Removed location: ${removed}`, 'info');
+  addLog(`LOCATION_REMOVED: ${removed}`, 'info');
 }
 
 /**
@@ -229,29 +266,13 @@ async function loadLocations() {
  * Reset locations to defaults
  */
 async function resetLocations() {
-  if (!confirm('Reset to default locations? This will remove any custom locations you added.')) {
+  if (!confirm('RESET_TO_DEFAULT_LOCATIONS? THIS_WILL_REMOVE_CUSTOM_ENTRIES.')) {
     return;
   }
   customLocations = [...DEFAULT_LOCATIONS];
   await saveLocations();
   renderLocations();
-  addLog('Locations reset to defaults', 'info');
-}
-
-/**
- * Show add location form
- */
-function showAddLocationForm() {
-  elements.addLocationForm.classList.remove('hidden');
-  elements.newLocationInput.focus();
-}
-
-/**
- * Hide add location form
- */
-function hideAddLocationForm() {
-  elements.addLocationForm.classList.add('hidden');
-  elements.newLocationInput.value = '';
+  addLog('LOCATIONS_RESET_TO_DEFAULTS', 'info');
 }
 
 /**
@@ -264,24 +285,19 @@ async function detectCurrentSite() {
     const url = tab.url || '';
     
     if (url.includes('ikman.lk')) {
-      elements.currentSite.textContent = 'IKMAN.LK';
-      elements.currentSite.className = 'site-badge ikman';
+      addLog('TARGET_DETECTED: IKMAN.LK', 'success');
       return 'ikman';
     } else if (url.includes('lankapropertyweb.com')) {
-      elements.currentSite.textContent = 'LANKAPROPERTYWEB.COM';
-      elements.currentSite.className = 'site-badge lpw';
+      addLog('TARGET_DETECTED: LANKAPROPERTYWEB.COM', 'success');
       return 'lpw';
     } else {
-      elements.currentSite.textContent = 'UNSUPPORTED';
-      elements.currentSite.className = 'site-badge unsupported';
       elements.startBtn.disabled = true;
-      addLog('Navigate to ikman.lk or lankapropertyweb.com', 'error');
+      addLog('ERROR: UNSUPPORTED_DOMAIN', 'error');
+      addLog('NAVIGATE_TO: IKMAN.LK | LANKAPROPERTYWEB.COM', 'info');
       return null;
     }
   } catch (error) {
     console.error('Error detecting site:', error);
-    elements.currentSite.textContent = 'ERROR';
-    elements.currentSite.className = 'site-badge unsupported';
     return null;
   }
 }
@@ -299,14 +315,28 @@ async function loadState() {
     const listings = data.listings || [];
     const pages = data.pagesScraped || 0;
     
-    elements.listingsCount.textContent = listings.length;
+    elements.listingsCount.textContent = listings.length.toLocaleString();
     elements.pagesCount.textContent = pages;
-    elements.filterLocations.checked = data.filterLocations !== false;
-    elements.scrapeDetails.checked = data.scrapeDetails === true;
     
-    const delay = data.pageDelay || 2.5;
-    elements.delaySlider.value = delay;
-    updateDelayDisplay();
+    // Filter locations toggle
+    filterLocationsEnabled = data.filterLocations !== false;
+    if (filterLocationsEnabled) {
+      elements.filterLocationsToggle.classList.add('checked');
+    } else {
+      elements.filterLocationsToggle.classList.remove('checked');
+    }
+    
+    // Scrape details toggle
+    scrapeDetailsEnabled = data.scrapeDetails === true;
+    if (scrapeDetailsEnabled) {
+      elements.scrapeDetailsToggle.classList.add('checked');
+    } else {
+      elements.scrapeDetailsToggle.classList.remove('checked');
+    }
+    
+    // Delay
+    currentDelay = data.pageDelay || 2.5;
+    updateDelaySelector(currentDelay);
     
     if (data.isScraping) {
       setStatus('scraping');
@@ -317,7 +347,7 @@ async function loadState() {
     }
     
     if (listings.length > 0) {
-      addLog(`Loaded ${listings.length} existing listings`, 'info');
+      addLog(`LOADED_${listings.length}_EXISTING_LISTINGS`, 'info');
     }
     
     await updateStorageUsage();
@@ -333,43 +363,41 @@ async function loadState() {
 async function startScraping() {
   const site = await detectCurrentSite();
   if (!site) {
-    addLog('Cannot scrape on this website', 'error');
+    addLog('ABORT: INVALID_TARGET_DOMAIN', 'error');
     return;
   }
   
-  const filterEnabled = elements.filterLocations.checked;
-  const scrapeDetails = elements.scrapeDetails.checked;
-  const pageDelay = parseFloat(elements.delaySlider.value) * 1000;
+  const pageDelay = currentDelay * 1000;
   
   await chrome.storage.local.set({ 
-    filterLocations: filterEnabled,
-    scrapeDetails: scrapeDetails,
-    pageDelay: parseFloat(elements.delaySlider.value)
+    filterLocations: filterLocationsEnabled,
+    scrapeDetails: scrapeDetailsEnabled,
+    pageDelay: currentDelay
   });
   
   setStatus('scraping');
   updateButtons(true);
-  addLog('Starting scraper...', 'info');
-  if (scrapeDetails) {
-    addLog('Detail page scraping enabled', 'info');
+  addLog('INITIALIZING_ENGINE...', 'success');
+  if (scrapeDetailsEnabled) {
+    addLog('FETCH_COORDS: ENABLED', 'info');
   }
-  addLog(`Page delay: ${elements.delaySlider.value}s`, 'info');
-  addLog(`Filtering ${customLocations.length} locations`, 'info');
+  addLog(`PAGE_DELAY: ${currentDelay}S`, 'info');
+  addLog(`TARGET_LOCATIONS: ${customLocations.length}`, 'info');
   
   try {
     await chrome.tabs.sendMessage(currentTabId, {
       action: 'START_SCRAPING',
-      filterLocations: filterEnabled,
-      scrapeDetails: scrapeDetails,
+      filterLocations: filterLocationsEnabled,
+      scrapeDetails: scrapeDetailsEnabled,
       pageDelay: pageDelay,
       locations: customLocations
     });
     
     await chrome.storage.local.set({ isScraping: true });
-    addLog('Scraper started successfully', 'success');
+    addLog('SCRAPER_ONLINE', 'success');
   } catch (error) {
     console.error('Error starting scraper:', error);
-    addLog('Failed to start. Refresh the page and try again.', 'error');
+    addLog('ERROR: FAILED_TO_START // REFRESH_PAGE', 'error');
     setStatus('idle');
     updateButtons(false);
   }
@@ -379,7 +407,7 @@ async function startScraping() {
  * Stop scraping
  */
 async function stopScraping() {
-  addLog('Stopping scraper...', 'info');
+  addLog('HALT_SIGNAL_SENT...', 'info');
   
   try {
     await chrome.tabs.sendMessage(currentTabId, { action: 'STOP_SCRAPING' });
@@ -387,10 +415,10 @@ async function stopScraping() {
     
     setStatus('stopped');
     updateButtons(false);
-    addLog('Scraper stopped', 'success');
+    addLog('SCRAPER_HALTED', 'success');
   } catch (error) {
     console.error('Error stopping scraper:', error);
-    addLog('Error stopping scraper', 'error');
+    addLog('ERROR: HALT_FAILED', 'error');
   }
 }
 
@@ -398,19 +426,19 @@ async function stopScraping() {
  * Download CSV
  */
 async function downloadCSV() {
-  addLog('Generating CSV...', 'info');
+  addLog('GENERATING_CSV_EXPORT...', 'info');
   
   try {
     const response = await chrome.runtime.sendMessage({ action: 'GENERATE_CSV' });
     
     if (response.success) {
-      addLog(`Downloaded ${response.count} listings`, 'success');
+      addLog(`EXPORT_COMPLETE: ${response.count}_LISTINGS`, 'success');
     } else {
-      addLog(response.error || 'Failed to generate CSV', 'error');
+      addLog(response.error || 'EXPORT_FAILED', 'error');
     }
   } catch (error) {
     console.error('Error downloading CSV:', error);
-    addLog('Error generating CSV', 'error');
+    addLog('ERROR: CSV_GENERATION_FAILED', 'error');
   }
 }
 
@@ -418,13 +446,13 @@ async function downloadCSV() {
  * Export and clear data
  */
 async function exportAndClear() {
-  addLog('Exporting and clearing data...', 'info');
+  addLog('EXPORT_+_PURGE_INITIATED...', 'info');
   
   try {
     const response = await chrome.runtime.sendMessage({ action: 'GENERATE_CSV' });
     
     if (response.success) {
-      addLog(`Downloaded ${response.count} listings`, 'success');
+      addLog(`EXPORT_COMPLETE: ${response.count}_LISTINGS`, 'success');
       
       await new Promise(resolve => setTimeout(resolve, 1000));
       
@@ -437,28 +465,21 @@ async function exportAndClear() {
       elements.pagesCount.textContent = '0';
       await updateStorageUsage();
       
-      addLog('Data cleared. Ready for more scraping!', 'success');
+      addLog('DATA_PURGED // READY_FOR_NEW_SCRAPE', 'success');
     } else {
-      addLog(response.error || 'Failed to export', 'error');
+      addLog(response.error || 'EXPORT_FAILED', 'error');
     }
   } catch (error) {
     console.error('Error in export and clear:', error);
-    addLog('Error exporting data', 'error');
+    addLog('ERROR: EXPORT_PURGE_FAILED', 'error');
   }
-}
-
-/**
- * Clear activity log
- */
-function clearLog() {
-  elements.logContainer.innerHTML = '<div class="log-entry success">Log cleared</div>';
 }
 
 /**
  * Clear all scraped data (without exporting)
  */
 async function clearData() {
-  if (!confirm('Are you sure you want to clear all scraped data? This cannot be undone.')) {
+  if (!confirm('CONFIRM: PURGE_ALL_DATA? THIS_CANNOT_BE_UNDONE.')) {
     return;
   }
   
@@ -475,11 +496,25 @@ async function clearData() {
     updateButtons(false);
     await updateStorageUsage();
     
-    addLog('All data cleared', 'success');
+    addLog('ALL_DATA_PURGED', 'success');
   } catch (error) {
     console.error('Error clearing data:', error);
-    addLog('Error clearing data', 'error');
+    addLog('ERROR: PURGE_FAILED', 'error');
   }
+}
+
+/**
+ * Open settings modal
+ */
+function openSettingsModal() {
+  elements.settingsModal.classList.remove('hidden');
+}
+
+/**
+ * Close settings modal
+ */
+function closeSettingsModal() {
+  elements.settingsModal.classList.add('hidden');
 }
 
 /**
@@ -488,27 +523,27 @@ async function clearData() {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   switch (message.action) {
     case 'UPDATE_COUNT':
-      elements.listingsCount.textContent = message.count;
+      elements.listingsCount.textContent = message.count.toLocaleString();
       if (message.newListings > 0) {
-        addLog(`Scraped ${message.newListings} new listings`, 'success');
+        addLog(`CAPTURED_${message.newListings}_NEW_LISTINGS`, 'success');
       }
       break;
       
     case 'UPDATE_PAGES':
       elements.pagesCount.textContent = message.pages;
-      addLog(`Processing page ${message.pages}...`, 'info');
+      addLog(`PAGE_${message.pages}_LOADED`, 'info');
       break;
       
     case 'SCRAPING_COMPLETE':
       setStatus('done');
       updateButtons(false);
-      addLog(`Scraping complete! Total: ${message.total} listings`, 'success');
+      addLog(`SCRAPE_COMPLETE: TOTAL_${message.total}_LISTINGS`, 'success');
       break;
       
     case 'SCRAPING_ERROR':
       setStatus('stopped');
       updateButtons(false);
-      addLog(`Error: ${message.error}`, 'error');
+      addLog(`ERROR: ${message.error}`, 'error');
       break;
       
     case 'LOG':
@@ -523,7 +558,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 chrome.storage.onChanged.addListener((changes, namespace) => {
   if (namespace === 'local') {
     if (changes.listings) {
-      elements.listingsCount.textContent = changes.listings.newValue?.length || 0;
+      elements.listingsCount.textContent = (changes.listings.newValue?.length || 0).toLocaleString();
       updateStorageUsage();
     }
     if (changes.pagesScraped) {
@@ -542,55 +577,73 @@ elements.stopBtn.addEventListener('click', stopScraping);
 elements.downloadBtn.addEventListener('click', downloadCSV);
 elements.exportIncrementalBtn.addEventListener('click', exportAndClear);
 elements.clearBtn.addEventListener('click', clearData);
-elements.clearLogBtn.addEventListener('click', clearLog);
 
-// Delay slider
-elements.delaySlider.addEventListener('input', updateDelayDisplay);
-elements.delaySlider.addEventListener('change', async () => {
-  const delay = parseFloat(elements.delaySlider.value);
-  await chrome.storage.local.set({ pageDelay: delay });
-  addLog(`Page delay set to ${delay}s`, 'info');
+// Scrape details toggle
+elements.scrapeDetailsToggle.addEventListener('click', async () => {
+  scrapeDetailsEnabled = toggleCheckbox(elements.scrapeDetailsToggle);
+  await chrome.storage.local.set({ scrapeDetails: scrapeDetailsEnabled });
+  addLog(`FETCH_COORDS: ${scrapeDetailsEnabled ? 'ENABLED' : 'DISABLED'}`, 'info');
 });
 
-// Settings toggles
-elements.scrapeDetails.addEventListener('change', async () => {
-  await chrome.storage.local.set({ scrapeDetails: elements.scrapeDetails.checked });
-});
-
-elements.filterLocations.addEventListener('change', async () => {
-  await chrome.storage.local.set({ filterLocations: elements.filterLocations.checked });
-});
-
-// Settings accordion
-if (elements.settingsToggle && elements.settingsContent) {
-  elements.settingsToggle.addEventListener('click', () => {
-    elements.settingsToggle.classList.toggle('open');
-    elements.settingsContent.classList.toggle('open');
+// Delay selector
+elements.delaySelector.querySelectorAll('.delay-option').forEach(opt => {
+  opt.addEventListener('click', async () => {
+    currentDelay = parseFloat(opt.dataset.delay);
+    updateDelaySelector(currentDelay);
+    await chrome.storage.local.set({ pageDelay: currentDelay });
+    addLog(`PAGE_DELAY_SET: ${currentDelay}S`, 'info');
   });
-}
+});
 
-// Location management
-elements.addLocationBtn.addEventListener('click', showAddLocationForm);
-elements.cancelAddLocation.addEventListener('click', hideAddLocationForm);
+// Settings modal
+elements.settingsBtn.addEventListener('click', (e) => {
+  e.preventDefault();
+  openSettingsModal();
+});
 
-elements.confirmAddLocation.addEventListener('click', async () => {
+elements.configLocationsBtn.addEventListener('click', openSettingsModal);
+
+elements.closeModalBtn.addEventListener('click', closeSettingsModal);
+
+elements.settingsModal.addEventListener('click', (e) => {
+  if (e.target === elements.settingsModal) {
+    closeSettingsModal();
+  }
+});
+
+// Filter locations toggle
+elements.filterLocationsToggle.addEventListener('click', async () => {
+  filterLocationsEnabled = toggleCheckbox(elements.filterLocationsToggle);
+  await chrome.storage.local.set({ filterLocations: filterLocationsEnabled });
+  addLog(`LOCATION_FILTER: ${filterLocationsEnabled ? 'ENABLED' : 'DISABLED'}`, 'info');
+});
+
+// Add location
+elements.addLocationBtn.addEventListener('click', async () => {
   const value = elements.newLocationInput.value;
-  await addLocation(value);
-  hideAddLocationForm();
+  if (value.trim()) {
+    await addLocation(value);
+    elements.newLocationInput.value = '';
+  }
 });
 
 elements.newLocationInput.addEventListener('keypress', async (e) => {
   if (e.key === 'Enter') {
     const value = elements.newLocationInput.value;
-    await addLocation(value);
-    hideAddLocationForm();
+    if (value.trim()) {
+      await addLocation(value);
+      elements.newLocationInput.value = '';
+    }
   }
 });
 
+// Reset locations
 elements.resetLocationsBtn.addEventListener('click', resetLocations);
 
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {
+  addLog('INITIALIZING_SYSTEM...', 'success');
   await detectCurrentSite();
   await loadState();
+  addLog('SYSTEM_READY', 'success');
 });
