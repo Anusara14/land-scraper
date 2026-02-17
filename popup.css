@@ -614,7 +614,7 @@ body {
 }
 
 .btn-reset {
-  width: 100%;
+  flex: 1;
   padding: 8px;
   background: transparent;
   border: 1px solid #333;

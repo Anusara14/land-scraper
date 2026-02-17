@@ -32,6 +32,7 @@ const elements = {
   newLocationInput: document.getElementById('newLocationInput'),
   addLocationBtn: document.getElementById('addLocationBtn'),
   resetLocationsBtn: document.getElementById('resetLocationsBtn'),
+  clearAllLocationsBtn: document.getElementById('clearAllLocationsBtn'),
   startBtn: document.getElementById('startBtn'),
   stopBtn: document.getElementById('stopBtn'),
   downloadBtn: document.getElementById('downloadBtn'),
@@ -659,6 +660,16 @@ elements.newLocationInput.addEventListener('keypress', async (e) => {
 
 // Reset locations
 elements.resetLocationsBtn.addEventListener('click', resetLocations);
+
+elements.clearAllLocationsBtn.addEventListener('click', async () => {
+  if (!confirm('CLEAR_ALL_LOCATIONS? THIS_CANNOT_BE_UNDONE.')) {
+    return;
+  }
+  customLocations = [];
+  await saveLocations();
+  renderLocations();
+  addLog('ALL_LOCATIONS_CLEARED', 'info');
+});
 
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {

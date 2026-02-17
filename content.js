@@ -284,92 +284,109 @@
       
       if (!response.ok) {
         console.warn(`Failed to fetch detail page: ${response.status}`);
-        return { lat: null, lng: null, postedDate: null, detailedAddress: null };
+        return { lat: null, lng: null, postedDate: null, address: null };
       }
       
       const html = await response.text();
       const parser = new DOMParser();
       const doc = parser.parseFromString(html, 'text/html');
       
-      let result = { lat: null, lng: null, postedDate: null, detailedAddress: null };
+      let result = { lat: null, lng: null, postedDate: null, address: null };
       
       // ---- EXTRACT POSTED DATE (ikman.lk specific) ----
       if (site === 'ikman') {
-        // Look for posted date in various locations
-        const dateSelectors = [
-          '[data-testid="posted-date"]',
-          '[class*="posted"]',
-          '[class*="date"]',
-          'span[class*="time"]',
-          '.ad-posted',
-          '[class*="created"]'
+        // ikman.lk shows posted date in various formats
+        // Try to find the element with posted/date info
+        const allText = doc.body?.textContent || '';
+        
+        // Look for "Posted on" or date patterns in the page
+        // ikman format: "Posted on 15 Feb 2026" or "2 days ago"
+        const postedPatterns = [
+          /posted\s*(?:on)?\s*[:.]?\s*(\d{1,2}\s+\w{3,}\s+\d{4})/i,
+          /posted\s*(?:on)?\s*[:.]?\s*(\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4})/i,
+          /(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\w*\s+\d{4})/i
         ];
         
-        for (const selector of dateSelectors) {
-          try {
-            const dateEl = doc.querySelector(selector);
-            if (dateEl) {
-              const dateText = dateEl.textContent.trim();
-              result.postedDate = parsePostedDate(dateText);
-              if (result.postedDate) break;
+        for (const pattern of postedPatterns) {
+          const match = allText.match(pattern);
+          if (match) {
+            result.postedDate = parsePostedDate(match[1]);
+            if (result.postedDate) {
+              console.log('[LandScraper] Found posted date:', result.postedDate);
+              break;
             }
-          } catch (e) {}
-        }
-        
-        // Also look in the text content for "Posted on" patterns
-        if (!result.postedDate) {
-          const bodyText = doc.body?.textContent || '';
-          const postedMatch = bodyText.match(/(?:posted|listed|added)\s*(?:on)?:?\s*(\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}|\d{1,2}\s+\w+\s+\d{4})/i);
-          if (postedMatch) {
-            result.postedDate = parsePostedDate(postedMatch[1]);
           }
         }
         
-        // Look for relative dates like "3 days ago"
+        // Look for relative dates like "3 days ago", "1 week ago"
         if (!result.postedDate) {
-          const bodyText = doc.body?.textContent || '';
-          const relativeMatch = bodyText.match(/(\d+)\s*(second|minute|hour|day|week|month|year)s?\s*ago/i);
+          const relativeMatch = allText.match(/(\d+)\s*(second|minute|hour|day|week|month|year)s?\s*ago/i);
           if (relativeMatch) {
             result.postedDate = calculateRelativeDate(parseInt(relativeMatch[1]), relativeMatch[2].toLowerCase());
+            console.log('[LandScraper] Found relative date:', result.postedDate);
           }
         }
         
-        // ---- EXTRACT DETAILED ADDRESS (ikman.lk) ----
-        const addressSelectors = [
-          '[data-testid="location-value"]',
-          '[class*="location"] [class*="value"]',
-          '[class*="address"]',
-          '[class*="location-info"]',
-          '.breadcrumb',
-          'nav[aria-label*="breadcrumb"]'
-        ];
+        // Try "yesterday" or "today"
+        if (!result.postedDate) {
+          if (/\byesterday\b/i.test(allText)) {
+            result.postedDate = calculateRelativeDate(1, 'day');
+          } else if (/\btoday\b/i.test(allText)) {
+            result.postedDate = new Date().toISOString().split('T')[0];
+          }
+        }
         
-        for (const selector of addressSelectors) {
-          try {
-            const addrEl = doc.querySelector(selector);
-            if (addrEl) {
-              const addrText = addrEl.textContent.trim();
-              if (addrText && addrText.length > 3 && !addrText.toLowerCase().includes('location')) {
-                result.detailedAddress = addrText.replace(/\s+/g, ' ').trim();
-                break;
+        // ---- EXTRACT ADDRESS/LOCATION (ikman.lk) ----
+        // ikman.lk shows location in breadcrumb or dedicated location section
+        // Usually: Colombo > Athurugiriya or "Location: Athurugiriya, Colombo"
+        
+        // Try breadcrumb first - most reliable
+        const breadcrumbLinks = doc.querySelectorAll('[class*="breadcrumb"] a, nav[class*="breadcrumb"] a, ol[class*="breadcrumb"] a');
+        const locationParts = [];
+        for (const link of breadcrumbLinks) {
+          const text = link.textContent.trim();
+          // Skip generic breadcrumb items
+          if (text && 
+              !['home', 'ikman', 'all ads', 'land', 'property', 'properties', 'for sale'].some(skip => text.toLowerCase() === skip) &&
+              text.length > 1 && text.length < 50) {
+            locationParts.push(text);
+          }
+        }
+        
+        if (locationParts.length > 0) {
+          // Reverse to get most specific first (area, then district)
+          result.address = locationParts.reverse().join(', ');
+          console.log('[LandScraper] Found address from breadcrumb:', result.address);
+        }
+        
+        // Try dedicated location element
+        if (!result.address) {
+          const locSelectors = [
+            '[class*="location"]:not([class*="icon"])',
+            '[data-testid*="location"]',
+            'span:contains("Location")',
+            'div:contains("Location")'
+          ];
+          
+          for (const selector of locSelectors) {
+            try {
+              const els = doc.querySelectorAll(selector);
+              for (const el of els) {
+                const text = el.textContent.trim();
+                // Look for Sri Lankan place names
+                if (text && text.length > 3 && text.length < 100 &&
+                    !text.toLowerCase().includes('chat') &&
+                    !text.toLowerCase().includes('login') &&
+                    !text.toLowerCase().includes('post your')) {
+                  // Extract just the location part if prefixed
+                  const locMatch = text.match(/(?:location|area|district)\s*[:.]?\s*(.+)/i);
+                  result.address = locMatch ? locMatch[1].trim() : text;
+                  console.log('[LandScraper] Found address from element:', result.address);
+                  break;
+                }
               }
-            }
-          } catch (e) {}
-        }
-        
-        // Try to extract from location breadcrumbs
-        if (!result.detailedAddress) {
-          const breadcrumbs = doc.querySelectorAll('[class*="breadcrumb"] a, nav a');
-          const locationParts = [];
-          for (const crumb of breadcrumbs) {
-            const text = crumb.textContent.trim();
-            // Skip "Home", "Land", "Property" etc.
-            if (text && !['home', 'land', 'property', 'properties', 'all ads', 'ikman'].some(skip => text.toLowerCase().includes(skip))) {
-              locationParts.push(text);
-            }
-          }
-          if (locationParts.length > 0) {
-            result.detailedAddress = locationParts.join(', ');
+              if (result.address) break;
+            } catch (e) {}
           }
         }
       }
@@ -445,7 +462,7 @@
       return result;
     } catch (error) {
       console.error('Error fetching detail page:', error);
-      return { lat: null, lng: null, postedDate: null, detailedAddress: null };
+      return { lat: null, lng: null, postedDate: null, address: null };
     }
   }
 
@@ -595,9 +612,57 @@
         const titleEl = card.querySelector('h2, h3, [class*="title"], [class*="heading"]');
         const title = titleEl?.textContent?.trim() || '';
 
-        // Location/Address
-        const locationEl = card.querySelector('[class*="location"], [class*="address"], span[class*="subtitle"]');
-        const location = locationEl?.textContent?.trim() || '';
+        // Location/Address - ikman.lk specific selectors
+        // Look for the location which usually contains area names like "Athurugiriya, Colombo"
+        let location = '';
+        
+        // Try specific ikman.lk location selectors
+        const locationSelectors = [
+          '[class*="location"] span:not([class*="icon"])',
+          '[class*="location"]:not(:has(svg)):not(:has(button))',
+          '[data-testid*="location"]',
+          'span[class*="subtitle"]:not(:has(button))',
+          // Look for text with Sri Lankan location patterns
+        ];
+        
+        for (const selector of locationSelectors) {
+          try {
+            const el = card.querySelector(selector);
+            if (el) {
+              const text = el.textContent.trim();
+              // Filter out navigation/UI text
+              if (text && 
+                  !text.toLowerCase().includes('chat') && 
+                  !text.toLowerCase().includes('login') && 
+                  !text.toLowerCase().includes('post') &&
+                  !text.toLowerCase().includes('search') &&
+                  text.length > 2 && text.length < 100) {
+                location = text;
+                break;
+              }
+            }
+          } catch (e) {}
+        }
+        
+        // Fallback: Extract location from URL or title
+        if (!location) {
+          // URL often contains location like: /ad/athurugiriya-land
+          const urlMatch = url.match(/\/ad\/([a-z\-]+)/i);
+          if (urlMatch) {
+            const urlLocation = urlMatch[1].replace(/-/g, ' ').replace(/land|sale|for|property/gi, '').trim();
+            if (urlLocation.length > 2) {
+              location = urlLocation;
+            }
+          }
+        }
+        
+        // Try to extract location from title (often contains area names)
+        if (!location && title) {
+          const titleMatch = title.match(/(?:in|at)\s+([A-Za-z\s]+?)(?:\s*[-,]|\s+for|\s+land|$)/i);
+          if (titleMatch) {
+            location = titleMatch[1].trim();
+          }
+        }
 
         // Price
         const priceEl = card.querySelector('[class*="price"], [class*="amount"]');
@@ -626,7 +691,7 @@
           longitude: null,
           postedDate: null,
           source: 'ikman.lk',
-          municipalCouncil: getMunicipalCouncil(location),
+          municipalCouncil: getMunicipalCouncil(location || title),
           scrapedAt: new Date().toISOString()
         };
       } catch (error) {
@@ -949,13 +1014,14 @@
               log(`Posted date: ${info.postedDate}`, 'info');
             }
             
-            // Update address with detailed address if found, and re-determine municipal council
-            if (info.detailedAddress) {
-              data.detailedAddress = info.detailedAddress;
-              // Re-determine municipal council with more specific address
-              const newMC = getMunicipalCouncil(info.detailedAddress);
+            // Update address from detail page if we got better info
+            if (info.address && info.address.length > 3) {
+              data.address = info.address;
+              // Re-determine municipal council with better address
+              const newMC = getMunicipalCouncil(info.address);
               if (newMC !== 'Other' && newMC !== 'Unknown') {
                 data.municipalCouncil = newMC;
+                log(`Municipal Council: ${newMC}`, 'info');
               }
             }
             
