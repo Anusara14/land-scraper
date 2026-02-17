@@ -206,18 +206,38 @@ function renderLocations() {
  */
 async function addLocation(location) {
   const trimmed = location.trim();
-  if (!trimmed) return;
+  if (!trimmed) return false;
   
   // Check for duplicates (case-insensitive)
   if (customLocations.some(l => l.toLowerCase() === trimmed.toLowerCase())) {
-    addLog(`Location "${trimmed}" already exists`, 'error');
-    return;
+    addLog(`"${trimmed}" already exists`, 'error');
+    return false;
   }
   
   customLocations.push(trimmed);
-  await saveLocations();
-  renderLocations();
-  addLog(`LOCATION_ADDED: ${trimmed}`, 'success');
+  return true;
+}
+
+/**
+ * Add multiple locations (comma-separated)
+ */
+async function addLocations(input) {
+  const locations = input.split(',').map(s => s.trim()).filter(s => s.length > 0);
+  
+  if (locations.length === 0) return;
+  
+  let addedCount = 0;
+  for (const loc of locations) {
+    if (await addLocation(loc)) {
+      addedCount++;
+    }
+  }
+  
+  if (addedCount > 0) {
+    await saveLocations();
+    renderLocations();
+    addLog(`ADDED_${addedCount}_LOCATION${addedCount > 1 ? 'S' : ''}`, 'success');
+  }
 }
 
 /**
@@ -622,7 +642,7 @@ elements.filterLocationsToggle.addEventListener('click', async () => {
 elements.addLocationBtn.addEventListener('click', async () => {
   const value = elements.newLocationInput.value;
   if (value.trim()) {
-    await addLocation(value);
+    await addLocations(value);
     elements.newLocationInput.value = '';
   }
 });
@@ -631,7 +651,7 @@ elements.newLocationInput.addEventListener('keypress', async (e) => {
   if (e.key === 'Enter') {
     const value = elements.newLocationInput.value;
     if (value.trim()) {
-      await addLocation(value);
+      await addLocations(value);
       elements.newLocationInput.value = '';
     }
   }

@@ -68,6 +68,7 @@ function generateCSV(listings) {
     'id',
     'title',
     'address',
+    'detailed_address',
     'municipal_council',
     'price_total',
     'price_per_perch',
@@ -77,6 +78,7 @@ function generateCSV(listings) {
     'longitude',
     'source',
     'url',
+    'posted_date',
     'scraped_date'
   ];
 
@@ -86,6 +88,7 @@ function generateCSV(listings) {
       index + 1,
       escapeCSV(listing.title),
       escapeCSV(listing.address),
+      escapeCSV(listing.detailedAddress || ''),
       escapeCSV(listing.municipalCouncil || ''),
       listing.priceTotal || '',
       listing.pricePerPerch || '',
@@ -95,6 +98,7 @@ function generateCSV(listings) {
       listing.longitude || '',
       escapeCSV(listing.source),
       escapeCSV(listing.url),
+      listing.postedDate || '',
       listing.scrapedAt ? listing.scrapedAt.split('T')[0] : new Date().toISOString().split('T')[0]
     ].join(',');
   });

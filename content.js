@@ -72,16 +72,31 @@
     if (!locationText) return 'Unknown';
     const lowerText = locationText.toLowerCase().trim();
     
+    // Split by comma, hyphen, or other separators and try each part
+    const parts = lowerText.split(/[,\-\/\|>→]/).map(p => p.trim()).filter(p => p.length > 0);
+    
     // Check if GND_MC_MAPPING is available (loaded from gnd_mapping.js)
     if (typeof GND_MC_MAPPING !== 'undefined') {
-      // Try exact match first
-      if (GND_MC_MAPPING[lowerText]) {
-        return GND_MC_MAPPING[lowerText];
+      // Try each part from most specific (first) to least specific
+      for (const part of parts) {
+        // Try exact match first
+        if (GND_MC_MAPPING[part]) {
+          return GND_MC_MAPPING[part];
+        }
       }
       
-      // Try to find a matching GND within the text
+      // Try to find a matching GND within any part
+      for (const part of parts) {
+        for (const [gnd, mc] of Object.entries(GND_MC_MAPPING)) {
+          if (part.includes(gnd) || gnd.includes(part)) {
+            return mc;
+          }
+        }
+      }
+      
+      // Try the full text as fallback
       for (const [gnd, mc] of Object.entries(GND_MC_MAPPING)) {
-        if (lowerText.includes(gnd) || gnd.includes(lowerText)) {
+        if (lowerText.includes(gnd)) {
           return mc;
         }
       }
@@ -255,7 +270,10 @@
    * Fetch detail page and extract coordinates
    * Uses fetch to get the page HTML without navigating
    */
-  async function fetchDetailPageCoords(url) {
+  /**
+   * Fetch detailed info from listing page (coordinates, posted date, full address)
+   */
+  async function fetchDetailPageInfo(url, site = 'ikman') {
     try {
       const response = await fetch(url, {
         credentials: 'same-origin',
@@ -266,73 +284,244 @@
       
       if (!response.ok) {
         console.warn(`Failed to fetch detail page: ${response.status}`);
-        return { lat: null, lng: null };
+        return { lat: null, lng: null, postedDate: null, detailedAddress: null };
       }
       
       const html = await response.text();
       const parser = new DOMParser();
       const doc = parser.parseFromString(html, 'text/html');
       
+      let result = { lat: null, lng: null, postedDate: null, detailedAddress: null };
+      
+      // ---- EXTRACT POSTED DATE (ikman.lk specific) ----
+      if (site === 'ikman') {
+        // Look for posted date in various locations
+        const dateSelectors = [
+          '[data-testid="posted-date"]',
+          '[class*="posted"]',
+          '[class*="date"]',
+          'span[class*="time"]',
+          '.ad-posted',
+          '[class*="created"]'
+        ];
+        
+        for (const selector of dateSelectors) {
+          try {
+            const dateEl = doc.querySelector(selector);
+            if (dateEl) {
+              const dateText = dateEl.textContent.trim();
+              result.postedDate = parsePostedDate(dateText);
+              if (result.postedDate) break;
+            }
+          } catch (e) {}
+        }
+        
+        // Also look in the text content for "Posted on" patterns
+        if (!result.postedDate) {
+          const bodyText = doc.body?.textContent || '';
+          const postedMatch = bodyText.match(/(?:posted|listed|added)\s*(?:on)?:?\s*(\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}|\d{1,2}\s+\w+\s+\d{4})/i);
+          if (postedMatch) {
+            result.postedDate = parsePostedDate(postedMatch[1]);
+          }
+        }
+        
+        // Look for relative dates like "3 days ago"
+        if (!result.postedDate) {
+          const bodyText = doc.body?.textContent || '';
+          const relativeMatch = bodyText.match(/(\d+)\s*(second|minute|hour|day|week|month|year)s?\s*ago/i);
+          if (relativeMatch) {
+            result.postedDate = calculateRelativeDate(parseInt(relativeMatch[1]), relativeMatch[2].toLowerCase());
+          }
+        }
+        
+        // ---- EXTRACT DETAILED ADDRESS (ikman.lk) ----
+        const addressSelectors = [
+          '[data-testid="location-value"]',
+          '[class*="location"] [class*="value"]',
+          '[class*="address"]',
+          '[class*="location-info"]',
+          '.breadcrumb',
+          'nav[aria-label*="breadcrumb"]'
+        ];
+        
+        for (const selector of addressSelectors) {
+          try {
+            const addrEl = doc.querySelector(selector);
+            if (addrEl) {
+              const addrText = addrEl.textContent.trim();
+              if (addrText && addrText.length > 3 && !addrText.toLowerCase().includes('location')) {
+                result.detailedAddress = addrText.replace(/\s+/g, ' ').trim();
+                break;
+              }
+            }
+          } catch (e) {}
+        }
+        
+        // Try to extract from location breadcrumbs
+        if (!result.detailedAddress) {
+          const breadcrumbs = doc.querySelectorAll('[class*="breadcrumb"] a, nav a');
+          const locationParts = [];
+          for (const crumb of breadcrumbs) {
+            const text = crumb.textContent.trim();
+            // Skip "Home", "Land", "Property" etc.
+            if (text && !['home', 'land', 'property', 'properties', 'all ads', 'ikman'].some(skip => text.toLowerCase().includes(skip))) {
+              locationParts.push(text);
+            }
+          }
+          if (locationParts.length > 0) {
+            result.detailedAddress = locationParts.join(', ');
+          }
+        }
+      }
+      
+      // ---- EXTRACT COORDINATES ----
       // Try to find Google Maps link
       const mapLink = doc.querySelector('a[href*="google.com/maps"], a[href*="maps.google"]');
       if (mapLink) {
         const coords = extractCoordsFromGoogleMaps(mapLink.href);
         if (coords.lat && coords.lng) {
-          return coords;
+          result.lat = coords.lat;
+          result.lng = coords.lng;
         }
       }
       
       // Try to find coordinates in iframe src
-      const mapIframe = doc.querySelector('iframe[src*="google.com/maps"], iframe[src*="maps.google"]');
-      if (mapIframe) {
-        const coords = extractCoordsFromGoogleMaps(mapIframe.src);
-        if (coords.lat && coords.lng) {
-          return coords;
-        }
-      }
-      
-      // Try to find in script tags
-      const scripts = doc.querySelectorAll('script');
-      for (const script of scripts) {
-        const text = script.textContent || '';
-        
-        // Look for various coordinate patterns
-        const patterns = [
-          /["']?lat(?:itude)?["']?\s*[:=]\s*["']?(-?\d+\.?\d*).*?["']?(?:lng|lon|longitude)["']?\s*[:=]\s*["']?(-?\d+\.?\d*)/is,
-          /LatLng\s*\(\s*(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)\s*\)/i,
-          /position:\s*{\s*lat:\s*(-?\d+\.?\d*)\s*,\s*lng:\s*(-?\d+\.?\d*)/i,
-          /center:\s*{\s*lat:\s*(-?\d+\.?\d*)\s*,\s*lng:\s*(-?\d+\.?\d*)/i
-        ];
-        
-        for (const pattern of patterns) {
-          const match = text.match(pattern);
-          if (match) {
-            const lat = parseFloat(match[1]);
-            const lng = parseFloat(match[2]);
-            
-            // Validate Sri Lanka bounds
-            if (lat >= 5.9 && lat <= 9.9 && lng >= 79.5 && lng <= 81.9) {
-              return { lat, lng };
-            }
+      if (!result.lat) {
+        const mapIframe = doc.querySelector('iframe[src*="google.com/maps"], iframe[src*="maps.google"]');
+        if (mapIframe) {
+          const coords = extractCoordsFromGoogleMaps(mapIframe.src);
+          if (coords.lat && coords.lng) {
+            result.lat = coords.lat;
+            result.lng = coords.lng;
           }
         }
       }
       
-      // Try data attributes
-      const mapContainer = doc.querySelector('[data-lat][data-lng], [data-latitude][data-longitude]');
-      if (mapContainer) {
-        const lat = parseFloat(mapContainer.dataset.lat || mapContainer.dataset.latitude);
-        const lng = parseFloat(mapContainer.dataset.lng || mapContainer.dataset.longitude);
-        if (lat && lng && lat >= 5.9 && lat <= 9.9 && lng >= 79.5 && lng <= 81.9) {
-          return { lat, lng };
+      // Try to find in script tags
+      if (!result.lat) {
+        const scripts = doc.querySelectorAll('script');
+        for (const script of scripts) {
+          const text = script.textContent || '';
+          
+          // Look for various coordinate patterns
+          const patterns = [
+            /["']?lat(?:itude)?["']?\s*[:=]\s*["']?(-?\d+\.?\d*).*?["']?(?:lng|lon|longitude)["']?\s*[:=]\s*["']?(-?\d+\.?\d*)/is,
+            /LatLng\s*\(\s*(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)\s*\)/i,
+            /position:\s*{\s*lat:\s*(-?\d+\.?\d*)\s*,\s*lng:\s*(-?\d+\.?\d*)/i,
+            /center:\s*{\s*lat:\s*(-?\d+\.?\d*)\s*,\s*lng:\s*(-?\d+\.?\d*)/i
+          ];
+          
+          for (const pattern of patterns) {
+            const match = text.match(pattern);
+            if (match) {
+              const lat = parseFloat(match[1]);
+              const lng = parseFloat(match[2]);
+              
+              // Validate Sri Lanka bounds
+              if (lat >= 5.9 && lat <= 9.9 && lng >= 79.5 && lng <= 81.9) {
+                result.lat = lat;
+                result.lng = lng;
+                break;
+              }
+            }
+          }
+          if (result.lat) break;
         }
       }
       
-      return { lat: null, lng: null };
+      // Try data attributes
+      if (!result.lat) {
+        const mapContainer = doc.querySelector('[data-lat][data-lng], [data-latitude][data-longitude]');
+        if (mapContainer) {
+          const lat = parseFloat(mapContainer.dataset.lat || mapContainer.dataset.latitude);
+          const lng = parseFloat(mapContainer.dataset.lng || mapContainer.dataset.longitude);
+          if (lat && lng && lat >= 5.9 && lat <= 9.9 && lng >= 79.5 && lng <= 81.9) {
+            result.lat = lat;
+            result.lng = lng;
+          }
+        }
+      }
+      
+      return result;
     } catch (error) {
       console.error('Error fetching detail page:', error);
-      return { lat: null, lng: null };
+      return { lat: null, lng: null, postedDate: null, detailedAddress: null };
     }
+  }
+
+  /**
+   * Parse posted date string to ISO format
+   */
+  function parsePostedDate(dateText) {
+    if (!dateText) return null;
+    
+    // Try various date formats
+    const formats = [
+      // DD/MM/YYYY or DD-MM-YYYY
+      /(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/,
+      // YYYY/MM/DD or YYYY-MM-DD  
+      /(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/,
+      // DD Mon YYYY (e.g., "15 Jan 2024")
+      /(\d{1,2})\s+(\w{3,})\s+(\d{4})/
+    ];
+    
+    for (const format of formats) {
+      const match = dateText.match(format);
+      if (match) {
+        try {
+          // Try to create a date object
+          const dateStr = match[0];
+          const parsed = new Date(dateStr);
+          if (!isNaN(parsed.getTime())) {
+            return parsed.toISOString().split('T')[0];
+          }
+          
+          // Handle DD/MM/YYYY format explicitly
+          if (/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4}$/.test(match[0])) {
+            const parts = match[0].split(/[\/\-]/);
+            const day = parseInt(parts[0]);
+            const month = parseInt(parts[1]) - 1;
+            const year = parseInt(parts[2]);
+            const date = new Date(year, month, day);
+            if (!isNaN(date.getTime())) {
+              return date.toISOString().split('T')[0];
+            }
+          }
+        } catch (e) {}
+      }
+    }
+    
+    return null;
+  }
+  
+  /**
+   * Calculate date from relative time (e.g., "3 days ago")
+   */
+  function calculateRelativeDate(num, unit) {
+    const now = new Date();
+    const msPerUnit = {
+      second: 1000,
+      minute: 60 * 1000,
+      hour: 60 * 60 * 1000,
+      day: 24 * 60 * 60 * 1000,
+      week: 7 * 24 * 60 * 60 * 1000,
+      month: 30 * 24 * 60 * 60 * 1000,
+      year: 365 * 24 * 60 * 60 * 1000
+    };
+    
+    if (msPerUnit[unit]) {
+      const pastDate = new Date(now.getTime() - (num * msPerUnit[unit]));
+      return pastDate.toISOString().split('T')[0];
+    }
+    return null;
+  }
+
+  /**
+   * Legacy function for backward compatibility
+   */
+  async function fetchDetailPageCoords(url) {
+    const info = await fetchDetailPageInfo(url);
+    return { lat: info.lat, lng: info.lng };
   }
 
   /**
@@ -435,6 +624,7 @@
           url: url.startsWith('http') ? url : `https://ikman.lk${url}`,
           latitude: null,
           longitude: null,
+          postedDate: null,
           source: 'ikman.lk',
           municipalCouncil: getMunicipalCouncil(location),
           scrapedAt: new Date().toISOString()
@@ -449,27 +639,69 @@
      * Find and click the next page button
      */
     getNextPageUrl() {
-      // Try various next page selectors
+      // ikman.lk pagination selectors - updated for current site structure
       const selectors = [
+        // Next button with arrow or text
+        'a[data-testid="pagination-next"]',
         'a[aria-label="Next"]',
         'a[rel="next"]',
         'button[aria-label="Next"]',
-        '[class*="pagination"] a:last-child',
-        'a[href*="page="]:not([href*="page=1"])'
+        'a.next',
+        '.pagination a.next',
+        '[class*="pagination"] li:last-child a',
+        '[class*="pagination"] a:last-of-type',
+        // SVG arrow buttons
+        'a[href*="page="] svg[class*="arrow"]',
+        // Generic patterns
+        'nav a[href*="page="]:last-child'
       ];
 
       for (const selector of selectors) {
-        const nextBtn = document.querySelector(selector);
-        if (nextBtn && !nextBtn.disabled) {
-          return nextBtn.href || null;
+        try {
+          const nextBtn = document.querySelector(selector);
+          if (nextBtn) {
+            const link = nextBtn.closest('a') || nextBtn;
+            if (link.href && link.href !== window.location.href) {
+              console.log('[LandScraper] Found next page via selector:', selector, link.href);
+              return link.href;
+            }
+          }
+        } catch (e) {
+          // Selector might be invalid
         }
       }
 
-      // Try URL manipulation
-      const urlParams = new URLSearchParams(window.location.search);
-      const currentPage = parseInt(urlParams.get('page') || '1');
-      urlParams.set('page', currentPage + 1);
-      return `${window.location.pathname}?${urlParams.toString()}`;
+      // Try to find any pagination link with higher page number
+      const currentUrl = new URL(window.location.href);
+      const currentPage = parseInt(currentUrl.searchParams.get('page') || '1');
+      
+      // Look for links with page numbers
+      const pageLinks = document.querySelectorAll('a[href*="page="]');
+      for (const link of pageLinks) {
+        try {
+          const linkUrl = new URL(link.href, window.location.origin);
+          const linkPage = parseInt(linkUrl.searchParams.get('page') || '0');
+          if (linkPage === currentPage + 1) {
+            console.log('[LandScraper] Found next page via page number:', link.href);
+            return link.href;
+          }
+        } catch (e) {
+          // Invalid URL
+        }
+      }
+
+      // Fallback: URL manipulation - construct next page URL
+      const nextPage = currentPage + 1;
+      currentUrl.searchParams.set('page', nextPage.toString());
+      const newUrl = currentUrl.toString();
+      
+      // Only return if it's actually different
+      if (newUrl !== window.location.href) {
+        console.log('[LandScraper] Using URL manipulation for next page:', newUrl);
+        return newUrl;
+      }
+      
+      return null;
     },
 
     /**
@@ -477,10 +709,16 @@
      */
     hasNextPage() {
       // Check for disabled/hidden next button
-      const nextBtn = document.querySelector('a[aria-label="Next"], [class*="next"]');
-      if (!nextBtn) return false;
+      const nextBtn = document.querySelector('a[aria-label="Next"], [class*="next"], a[data-testid="pagination-next"]');
+      if (nextBtn) {
+        // Check if button is disabled
+        if (nextBtn.classList.contains('disabled') || nextBtn.hasAttribute('disabled')) {
+          return false;
+        }
+        return true;
+      }
       
-      // Check if button is disabled or no more listings
+      // Check if there are listings on the page
       const cards = this.getListingCards();
       return cards.length > 0;
     }
@@ -579,6 +817,7 @@
           url: url.startsWith('http') ? url : `https://www.lankapropertyweb.com${url}`,
           latitude: coords.lat,
           longitude: coords.lng,
+          postedDate: null,
           source: 'lankapropertyweb.com',
           municipalCouncil: getMunicipalCouncil(location),
           scrapedAt: new Date().toISOString()
@@ -673,6 +912,9 @@
 
     const cards = scraper.getListingCards();
     log(`Found ${cards.length} listings on page`, 'info');
+    
+    // Determine site type for detail page fetching
+    const site = window.location.hostname.includes('ikman') ? 'ikman' : 'lpw';
 
     const listings = [];
     for (const card of cards) {
@@ -689,15 +931,34 @@
         }
         
         if (shouldInclude) {
-          // If detail page scraping is enabled and no coordinates, fetch them
-          if (scrapeDetails && !data.latitude && !data.longitude && data.url) {
-            log(`Fetching coordinates for: ${data.title.substring(0, 30)}...`, 'info');
-            const coords = await fetchDetailPageCoords(data.url);
-            if (coords.lat && coords.lng) {
-              data.latitude = coords.lat;
-              data.longitude = coords.lng;
-              log(`Found coordinates: ${coords.lat}, ${coords.lng}`, 'success');
+          // If detail page scraping is enabled, fetch additional info
+          if (scrapeDetails && data.url) {
+            log(`Fetching details for: ${data.title.substring(0, 30)}...`, 'info');
+            const info = await fetchDetailPageInfo(data.url, site);
+            
+            // Update coordinates if found
+            if (info.lat && info.lng) {
+              data.latitude = info.lat;
+              data.longitude = info.lng;
+              log(`Found coordinates: ${info.lat}, ${info.lng}`, 'success');
             }
+            
+            // Update posted date if found
+            if (info.postedDate) {
+              data.postedDate = info.postedDate;
+              log(`Posted date: ${info.postedDate}`, 'info');
+            }
+            
+            // Update address with detailed address if found, and re-determine municipal council
+            if (info.detailedAddress) {
+              data.detailedAddress = info.detailedAddress;
+              // Re-determine municipal council with more specific address
+              const newMC = getMunicipalCouncil(info.detailedAddress);
+              if (newMC !== 'Other' && newMC !== 'Unknown') {
+                data.municipalCouncil = newMC;
+              }
+            }
+            
             // Add small delay between detail page fetches to avoid rate limiting
             await sleep(500);
           }
@@ -768,20 +1029,30 @@
     if (!scraper) return false;
 
     const nextUrl = scraper.getNextPageUrl();
-    if (nextUrl && nextUrl !== window.location.href) {
-      log(`Navigating to next page...`, 'info');
+    console.log('[LandScraper] Next URL:', nextUrl, 'Current:', window.location.href);
+    
+    if (nextUrl) {
+      // Normalize URLs for comparison
+      const currentNormalized = new URL(window.location.href).toString();
+      const nextNormalized = new URL(nextUrl, window.location.origin).toString();
       
-      // Save state before navigation (including all settings)
-      await chrome.storage.local.set({ 
-        isScraping: true,
-        filterLocations,
-        scrapeDetails,
-        pageDelay: pageDelay / 1000 // Store in seconds
-      });
-      
-      // Navigate
-      window.location.href = nextUrl;
-      return true;
+      if (nextNormalized !== currentNormalized) {
+        log(`Navigating to next page...`, 'info');
+        
+        // Save state before navigation (including all settings)
+        await chrome.storage.local.set({ 
+          isScraping: true,
+          filterLocations,
+          scrapeDetails,
+          pageDelay: pageDelay / 1000 // Store in seconds
+        });
+        
+        // Navigate
+        window.location.href = nextUrl;
+        return true;
+      } else {
+        console.log('[LandScraper] Next URL same as current, no more pages');
+      }
     }
     
     return false;
