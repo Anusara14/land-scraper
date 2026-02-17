@@ -39,7 +39,6 @@ const elements = {
   exportIncrementalBtn: document.getElementById('exportIncrementalBtn'),
   clearBtn: document.getElementById('clearBtn'),
   logContainer: document.getElementById('logContainer'),
-  settingsBtn: document.getElementById('settingsBtn'),
   settingsModal: document.getElementById('settingsModal'),
   closeModalBtn: document.getElementById('closeModalBtn')
 };
@@ -69,7 +68,7 @@ function getTimestamp() {
 function addLog(message, type = '') {
   const entry = document.createElement('div');
   entry.className = `log-entry ${type}`;
-  entry.textContent = `[${getTimestamp()}] ${message.toUpperCase().replace(/ /g, '_')}`;
+  entry.textContent = `[${getTimestamp()}] ${message}`;
   elements.logContainer.insertBefore(entry, elements.logContainer.firstChild);
   
   while (elements.logContainer.children.length > 50) {
@@ -85,19 +84,19 @@ function setStatus(status) {
   
   switch (status) {
     case 'idle':
-      elements.statusBadge.textContent = 'SYS_STATUS: IDLE';
+      elements.statusBadge.textContent = 'Status: Idle';
       break;
     case 'scraping':
-      elements.statusBadge.textContent = 'SYS_STATUS: ACTIVE';
+      elements.statusBadge.textContent = 'Status: Active';
       break;
     case 'stopped':
-      elements.statusBadge.textContent = 'SYS_STATUS: HALTED';
+      elements.statusBadge.textContent = 'Status: Stopped';
       break;
     case 'done':
-      elements.statusBadge.textContent = 'SYS_STATUS: COMPLETE';
+      elements.statusBadge.textContent = 'Status: Complete';
       break;
     default:
-      elements.statusBadge.textContent = 'SYS_STATUS: IDLE';
+      elements.statusBadge.textContent = 'Status: Idle';
   }
 }
 
@@ -237,7 +236,7 @@ async function addLocations(input) {
   if (addedCount > 0) {
     await saveLocations();
     renderLocations();
-    addLog(`ADDED_${addedCount}_LOCATION${addedCount > 1 ? 'S' : ''}`, 'success');
+    addLog(`Added ${addedCount} location${addedCount > 1 ? 's' : ''}`, 'success');
   }
 }
 
@@ -248,7 +247,7 @@ async function removeLocation(index) {
   const removed = customLocations.splice(index, 1)[0];
   await saveLocations();
   renderLocations();
-  addLog(`LOCATION_REMOVED: ${removed}`, 'info');
+  addLog(`Removed: ${removed}`, 'info');
 }
 
 /**
@@ -287,13 +286,13 @@ async function loadLocations() {
  * Reset locations to defaults
  */
 async function resetLocations() {
-  if (!confirm('RESET_TO_DEFAULT_LOCATIONS? THIS_WILL_REMOVE_CUSTOM_ENTRIES.')) {
+  if (!confirm('Reset to default locations? This will remove custom entries.')) {
     return;
   }
   customLocations = [...DEFAULT_LOCATIONS];
   await saveLocations();
   renderLocations();
-  addLog('LOCATIONS_RESET_TO_DEFAULTS', 'info');
+  addLog('Locations reset to defaults', 'info');
 }
 
 /**
@@ -306,15 +305,15 @@ async function detectCurrentSite() {
     const url = tab.url || '';
     
     if (url.includes('ikman.lk')) {
-      addLog('TARGET_DETECTED: IKMAN.LK', 'success');
+      addLog('Website detected: ikman.lk', 'success');
       return 'ikman';
     } else if (url.includes('lankapropertyweb.com')) {
-      addLog('TARGET_DETECTED: LANKAPROPERTYWEB.COM', 'success');
+      addLog('Website detected: lankapropertyweb.com', 'success');
       return 'lpw';
     } else {
       elements.startBtn.disabled = true;
-      addLog('ERROR: UNSUPPORTED_DOMAIN', 'error');
-      addLog('NAVIGATE_TO: IKMAN.LK | LANKAPROPERTYWEB.COM', 'info');
+      addLog('Error: Unsupported website', 'error');
+      addLog('Go to: ikman.lk or lankapropertyweb.com', 'info');
       return null;
     }
   } catch (error) {
@@ -368,7 +367,7 @@ async function loadState() {
     }
     
     if (listings.length > 0) {
-      addLog(`LOADED_${listings.length}_EXISTING_LISTINGS`, 'info');
+      addLog(`Loaded ${listings.length} listings from storage`, 'info');
     }
     
     await updateStorageUsage();
@@ -384,7 +383,7 @@ async function loadState() {
 async function startScraping() {
   const site = await detectCurrentSite();
   if (!site) {
-    addLog('ABORT: INVALID_TARGET_DOMAIN', 'error');
+    addLog('Error: Invalid website', 'error');
     return;
   }
   
@@ -398,12 +397,12 @@ async function startScraping() {
   
   setStatus('scraping');
   updateButtons(true);
-  addLog('INITIALIZING_ENGINE...', 'success');
+  addLog('Starting scraper...', 'success');
   if (scrapeDetailsEnabled) {
-    addLog('FETCH_COORDS: ENABLED', 'info');
+    addLog('Location coordinates: enabled', 'info');
   }
-  addLog(`PAGE_DELAY: ${currentDelay}S`, 'info');
-  addLog(`TARGET_LOCATIONS: ${customLocations.length}`, 'info');
+  addLog(`Wait time: ${currentDelay}s`, 'info');
+  addLog(`Target locations: ${customLocations.length}`, 'info');
   
   try {
     await chrome.tabs.sendMessage(currentTabId, {
@@ -415,10 +414,10 @@ async function startScraping() {
     });
     
     await chrome.storage.local.set({ isScraping: true });
-    addLog('SCRAPER_ONLINE', 'success');
+    addLog('Scraper started', 'success');
   } catch (error) {
     console.error('Error starting scraper:', error);
-    addLog('ERROR: FAILED_TO_START // REFRESH_PAGE', 'error');
+    addLog('Error: Could not start scraper. Refresh page and try again.', 'error');
     setStatus('idle');
     updateButtons(false);
   }
@@ -428,7 +427,7 @@ async function startScraping() {
  * Stop scraping
  */
 async function stopScraping() {
-  addLog('HALT_SIGNAL_SENT...', 'info');
+  addLog('Stopping scraper...', 'info');
   
   try {
     await chrome.tabs.sendMessage(currentTabId, { action: 'STOP_SCRAPING' });
@@ -436,10 +435,10 @@ async function stopScraping() {
     
     setStatus('stopped');
     updateButtons(false);
-    addLog('SCRAPER_HALTED', 'success');
+    addLog('Scraper stopped', 'success');
   } catch (error) {
     console.error('Error stopping scraper:', error);
-    addLog('ERROR: HALT_FAILED', 'error');
+    addLog('Error: Could not stop scraper', 'error');
   }
 }
 
@@ -447,19 +446,19 @@ async function stopScraping() {
  * Download CSV
  */
 async function downloadCSV() {
-  addLog('GENERATING_CSV_EXPORT...', 'info');
+  addLog('Creating CSV file...', 'info');
   
   try {
     const response = await chrome.runtime.sendMessage({ action: 'GENERATE_CSV' });
     
     if (response.success) {
-      addLog(`EXPORT_COMPLETE: ${response.count}_LISTINGS`, 'success');
+      addLog(`Downloaded ${response.count} listings`, 'success');
     } else {
-      addLog(response.error || 'EXPORT_FAILED', 'error');
+      addLog(response.error || 'Download failed', 'error');
     }
   } catch (error) {
     console.error('Error downloading CSV:', error);
-    addLog('ERROR: CSV_GENERATION_FAILED', 'error');
+    addLog('Error: CSV creation failed', 'error');
   }
 }
 
@@ -467,13 +466,13 @@ async function downloadCSV() {
  * Export and clear data
  */
 async function exportAndClear() {
-  addLog('EXPORT_+_PURGE_INITIATED...', 'info');
+  addLog('Downloading and clearing data...', 'info');
   
   try {
     const response = await chrome.runtime.sendMessage({ action: 'GENERATE_CSV' });
     
     if (response.success) {
-      addLog(`EXPORT_COMPLETE: ${response.count}_LISTINGS`, 'success');
+      addLog(`Downloaded ${response.count} listings, clearing storage...`, 'success');
       
       await new Promise(resolve => setTimeout(resolve, 1000));
       
@@ -486,13 +485,13 @@ async function exportAndClear() {
       elements.pagesCount.textContent = '0';
       await updateStorageUsage();
       
-      addLog('DATA_PURGED // READY_FOR_NEW_SCRAPE', 'success');
+      addLog('Storage cleared, ready for new scrape', 'success');
     } else {
-      addLog(response.error || 'EXPORT_FAILED', 'error');
+      addLog(response.error || 'Download failed', 'error');
     }
   } catch (error) {
     console.error('Error in export and clear:', error);
-    addLog('ERROR: EXPORT_PURGE_FAILED', 'error');
+    addLog('Error: Download and clear failed', 'error');
   }
 }
 
@@ -500,7 +499,7 @@ async function exportAndClear() {
  * Clear all scraped data (without exporting)
  */
 async function clearData() {
-  if (!confirm('CONFIRM: PURGE_ALL_DATA? THIS_CANNOT_BE_UNDONE.')) {
+  if (!confirm('Delete all data? This cannot be undone.')) {
     return;
   }
   
@@ -517,10 +516,10 @@ async function clearData() {
     updateButtons(false);
     await updateStorageUsage();
     
-    addLog('ALL_DATA_PURGED', 'success');
+    addLog('All data cleared', 'success');
   } catch (error) {
     console.error('Error clearing data:', error);
-    addLog('ERROR: PURGE_FAILED', 'error');
+    addLog('Error: Could not clear data', 'error');
   }
 }
 
@@ -546,19 +545,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     case 'UPDATE_COUNT':
       elements.listingsCount.textContent = message.count.toLocaleString();
       if (message.newListings > 0) {
-        addLog(`CAPTURED_${message.newListings}_NEW_LISTINGS`, 'success');
+        addLog(`Found ${message.newListings} new listings`, 'success');
       }
       break;
       
     case 'UPDATE_PAGES':
       elements.pagesCount.textContent = message.pages;
-      addLog(`PAGE_${message.pages}_LOADED`, 'info');
+      addLog(`Loaded page ${message.pages}`, 'info');
       break;
       
     case 'SCRAPING_COMPLETE':
       setStatus('done');
       updateButtons(false);
-      addLog(`SCRAPE_COMPLETE: TOTAL_${message.total}_LISTINGS`, 'success');
+      addLog(`Scraping complete! Total: ${message.total} listings`, 'success');
       break;
       
     case 'SCRAPING_ERROR':
@@ -603,7 +602,7 @@ elements.clearBtn.addEventListener('click', clearData);
 elements.scrapeDetailsToggle.addEventListener('click', async () => {
   scrapeDetailsEnabled = toggleCheckbox(elements.scrapeDetailsToggle);
   await chrome.storage.local.set({ scrapeDetails: scrapeDetailsEnabled });
-  addLog(`FETCH_COORDS: ${scrapeDetailsEnabled ? 'ENABLED' : 'DISABLED'}`, 'info');
+  addLog(`Location coordinates: ${scrapeDetailsEnabled ? 'enabled' : 'disabled'}`, 'info');
 });
 
 // Delay selector
@@ -612,16 +611,11 @@ elements.delaySelector.querySelectorAll('.delay-option').forEach(opt => {
     currentDelay = parseFloat(opt.dataset.delay);
     updateDelaySelector(currentDelay);
     await chrome.storage.local.set({ pageDelay: currentDelay });
-    addLog(`PAGE_DELAY_SET: ${currentDelay}S`, 'info');
+    addLog(`Wait time set: ${currentDelay}s`, 'info');
   });
 });
 
 // Settings modal
-elements.settingsBtn.addEventListener('click', (e) => {
-  e.preventDefault();
-  openSettingsModal();
-});
-
 elements.configLocationsBtn.addEventListener('click', openSettingsModal);
 
 elements.closeModalBtn.addEventListener('click', closeSettingsModal);
@@ -636,7 +630,7 @@ elements.settingsModal.addEventListener('click', (e) => {
 elements.filterLocationsToggle.addEventListener('click', async () => {
   filterLocationsEnabled = toggleCheckbox(elements.filterLocationsToggle);
   await chrome.storage.local.set({ filterLocations: filterLocationsEnabled });
-  addLog(`LOCATION_FILTER: ${filterLocationsEnabled ? 'ENABLED' : 'DISABLED'}`, 'info');
+  addLog(`Location filter: ${filterLocationsEnabled ? 'enabled' : 'disabled'}`, 'info');
 });
 
 // Add location
@@ -662,19 +656,19 @@ elements.newLocationInput.addEventListener('keypress', async (e) => {
 elements.resetLocationsBtn.addEventListener('click', resetLocations);
 
 elements.clearAllLocationsBtn.addEventListener('click', async () => {
-  if (!confirm('CLEAR_ALL_LOCATIONS? THIS_CANNOT_BE_UNDONE.')) {
+  if (!confirm('Clear all locations? This cannot be undone.')) {
     return;
   }
   customLocations = [];
   await saveLocations();
   renderLocations();
-  addLog('ALL_LOCATIONS_CLEARED', 'info');
+  addLog('All locations cleared', 'info');
 });
 
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {
-  addLog('INITIALIZING_SYSTEM...', 'success');
+  addLog('Starting system...', 'success');
   await detectCurrentSite();
   await loadState();
-  addLog('SYSTEM_READY', 'success');
+  addLog('Ready to scrape', 'success');
 });

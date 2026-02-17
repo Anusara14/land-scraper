@@ -10,17 +10,17 @@
   <!-- Header -->
   <header class="header">
     <div class="logo">LAND_SCRAPER</div>
-    <div id="statusBadge" class="status-badge idle">SYS_STATUS: IDLE</div>
+    <div id="statusBadge" class="status-badge idle">Status: Idle</div>
   </header>
 
   <!-- Stats Grid -->
   <section class="stats-grid">
     <div class="stat-card">
-      <div class="stat-label">LISTINGS_CAPTURED</div>
+      <div class="stat-label">Listings Found</div>
       <div class="stat-value" id="listingsCount">0</div>
     </div>
     <div class="stat-card">
-      <div class="stat-label">PAGES_PARSED</div>
+      <div class="stat-label">Pages Scraped</div>
       <div class="stat-value" id="pagesCount">0</div>
     </div>
   </section>
@@ -28,7 +28,7 @@
   <!-- Storage Section -->
   <section class="storage-section">
     <div class="storage-header">
-      <div class="storage-label">STORAGE_MEM_USAGE</div>
+      <div class="storage-label">Storage Used</div>
       <div class="storage-value" id="storagePercent">0.00MB / 5.00MB</div>
     </div>
     <div class="segmented-progress" id="storageProgress">
@@ -49,7 +49,7 @@
   <!-- Settings Row -->
   <section class="settings-row">
     <div class="setting-item">
-      <span class="setting-label">FETCH_COORDS</span>
+      <span class="setting-label">Get Location</span>
       <div id="scrapeDetailsToggle" class="checkbox-brutalist">
         <svg class="check-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
           <polyline points="20 6 9 17 4 12"/>
@@ -57,7 +57,7 @@
       </div>
     </div>
     <div class="setting-item">
-      <span class="setting-label">PAGE_DELAY</span>
+      <span class="setting-label">Wait Time</span>
       <div class="delay-selector" id="delaySelector">
         <button class="delay-option active" data-delay="2">2S</button>
         <button class="delay-option" data-delay="3">3S</button>
@@ -68,7 +68,7 @@
   <!-- Filter & Locations Row -->
   <section class="settings-row">
     <div class="setting-item">
-      <span class="setting-label">FILTER_LOCS</span>
+      <span class="setting-label">Filter Locations</span>
       <div id="filterLocationsToggle" class="checkbox-brutalist checked">
         <svg class="check-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
           <polyline points="20 6 9 17 4 12"/>
@@ -76,41 +76,35 @@
       </div>
     </div>
     <div class="setting-item">
-      <button id="configLocationsBtn" class="btn-config">CONFIG_LOCATIONS</button>
+      <button id="configLocationsBtn" class="btn-config">Manage Locations</button>
     </div>
   </section>
 
   <!-- Actions Section -->
   <section class="actions-section">
-    <button id="startBtn" class="btn btn-primary">EXECUTE_SCRAPE</button>
+    <button id="startBtn" class="btn btn-primary">Start Scraping</button>
     <div class="btn-row">
-      <button id="stopBtn" class="btn btn-secondary" disabled>HALT_SCRAPE</button>
-      <button id="downloadBtn" class="btn btn-secondary">EXPORT_CSV.RAW</button>
+      <button id="stopBtn" class="btn btn-secondary" disabled>Stop Scraping</button>
+      <button id="downloadBtn" class="btn btn-secondary">Download Data</button>
     </div>
     <div class="btn-row">
-      <button id="exportIncrementalBtn" class="btn btn-secondary">EXPORT_+_CLEAR</button>
-      <button id="clearBtn" class="btn btn-secondary">PURGE_DATA</button>
+      <button id="exportIncrementalBtn" class="btn btn-secondary">Download & Clear</button>
+      <button id="clearBtn" class="btn btn-secondary">Clear All</button>
     </div>
   </section>
 
   <!-- Log Section -->
   <section class="log-section">
-    <div class="log-header">LIVE_LOG_STREAM</div>
+    <div class="log-header">Activity Log</div>
     <div id="logContainer" class="log-container">
-      <div class="log-entry success">[--:--:--] SYS_READY...</div>
+      <div class="log-entry success">[--:--:--] System ready...</div>
     </div>
   </section>
 
   <!-- Footer -->
   <footer class="footer">
-    <div class="footer-version">V.1.0.0-STABLE // BUILD_ID: LS-01</div>
+    <div class="footer-version">v2.2.0</div>
     <div class="footer-links">
-      <a href="#" id="settingsBtn" class="footer-link" title="Settings">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="3"/>
-          <path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/>
-        </svg>
-      </a>
       <a href="https://github.com/Anusara14" target="_blank" class="footer-link" title="GitHub">
         <svg viewBox="0 0 24 24" fill="currentColor">
           <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
@@ -123,25 +117,25 @@
   <div id="settingsModal" class="modal-overlay hidden">
     <div class="modal">
       <div class="modal-header">
-        <span class="modal-title">TARGET_LOCATIONS</span>
+        <span class="modal-title">Location Settings</span>
         <button id="closeModalBtn" class="modal-close">×</button>
       </div>
       <div class="modal-body">
         <!-- Target Locations -->
         <div class="modal-section">
-          <div class="modal-section-title">CONFIGURED_AREAS</div>
+          <div class="modal-section-title">Added Locations</div>
           <div class="locations-grid" id="locationsList">
             <!-- Locations will be populated by JS -->
           </div>
           <div class="add-location-row">
-            <input type="text" id="newLocationInput" class="text-input" placeholder="LOC1, LOC2, LOC3... (COMMA_SEPARATED)">
+            <input type="text" id="newLocationInput" class="text-input" placeholder="City, Area, District...">
             <button id="addLocationBtn" class="btn-add">ADD</button>
           </div>
         </div>
       </div>
       <div class="modal-footer">
-        <button id="clearAllLocationsBtn" class="btn-reset">CLEAR_ALL</button>
-        <button id="resetLocationsBtn" class="btn-reset">RESET_TO_DEFAULTS</button>
+        <button id="clearAllLocationsBtn" class="btn-reset">Clear All</button>
+        <button id="resetLocationsBtn" class="btn-reset">Reset to Defaults</button>
       </div>
     </div>
   </div>
