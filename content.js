@@ -41,6 +41,7 @@
   let filterLocations = true;
   let scrapeDetails = false;  // Whether to visit detail pages for coordinates
   let pageDelay = DEFAULT_PAGE_DELAY;  // Configurable delay
+  let visitedPages = new Set();  // Track visited page URLs to prevent loops
 
   // ============================================
   // UTILITY FUNCTIONS
@@ -577,25 +578,46 @@
      * Get all listing cards on the current page
      */
     getListingCards() {
-      // ikman.lk uses various selectors for listing items
+      // Simple approach: find all ad links and deduplicate
+      // The saveListings function already handles URL deduplication across pages
+      
       const selectors = [
-        'li[data-testid]', // Test ID based
-        'a[href*="/ad/"]', // Links to individual ads
-        '.list--3NxGO > li', // List items
-        '[class*="item-"]', // Item classes
-        'article' // Article elements
+        'li:has(a[href*="/ad/"])',
+        'a[href*="/ad/"]'
       ];
       
+      let cards = [];
+      
       for (const selector of selectors) {
-        const cards = document.querySelectorAll(selector);
-        if (cards.length > 0) {
-          return Array.from(cards);
+        try {
+          const found = document.querySelectorAll(selector);
+          if (found.length > 0) {
+            // Deduplicate by URL within the page
+            const seenUrls = new Set();
+            const uniqueCards = [];
+            
+            for (const el of found) {
+              const link = el.tagName === 'A' ? el : el.querySelector('a[href*="/ad/"]');
+              const url = link?.href;
+              if (url && !seenUrls.has(url)) {
+                seenUrls.add(url);
+                uniqueCards.push(el);
+              }
+            }
+            
+            if (uniqueCards.length > 0) {
+              cards = uniqueCards;
+              console.log(`[LandScraper] Found ${cards.length} unique listings using: ${selector}`);
+              break;
+            }
+          }
+        } catch (e) {
+          console.log(`[LandScraper] Selector failed: ${selector}`, e);
         }
       }
       
-      // Fallback: find all links to ads
-      const adLinks = document.querySelectorAll('a[href*="/en/ad/"]');
-      return Array.from(new Set(Array.from(adLinks).map(a => a.closest('li, article, div[class*="item"]') || a)));
+      console.log(`[LandScraper] Total cards found: ${cards.length}`);
+      return cards;
     },
 
     /**
@@ -606,11 +628,16 @@
         // Find the link to the listing
         const link = card.querySelector('a[href*="/ad/"]') || card;
         const url = link.href || link.getAttribute('href');
-        if (!url || !url.includes('/ad/')) return null;
+        if (!url || !url.includes('/ad/')) {
+          console.log('[LandScraper] Card skipped - no ad URL found');
+          return null;
+        }
 
         // Title - try multiple selectors
         const titleEl = card.querySelector('h2, h3, [class*="title"], [class*="heading"]');
         const title = titleEl?.textContent?.trim() || '';
+        
+        console.log(`[LandScraper] Extracting: ${title.substring(0, 50)} | URL: ${url}`);
 
         // Location/Address - ikman.lk specific selectors
         // Look for the location which usually contains area names like "Athurugiriya, Colombo"
@@ -704,31 +731,37 @@
      * Find and click the next page button
      */
     getNextPageUrl() {
-      // ikman.lk pagination selectors - updated for current site structure
-      const selectors = [
-        // Next button with arrow or text
+      // Get current page number from URL
+      const currentUrl = new URL(window.location.href);
+      let currentPage = 1;
+      
+      // ikman.lk uses ?page=N format
+      if (currentUrl.searchParams.has('page')) {
+        currentPage = parseInt(currentUrl.searchParams.get('page')) || 1;
+      }
+      
+      console.log('[LandScraper] Current page detected:', currentPage, 'URL:', window.location.href);
+      
+      // Method 1: Look for explicit "next" links in pagination
+      const paginationSelectors = [
         'a[data-testid="pagination-next"]',
         'a[aria-label="Next"]',
         'a[rel="next"]',
-        'button[aria-label="Next"]',
-        'a.next',
         '.pagination a.next',
-        '[class*="pagination"] li:last-child a',
-        '[class*="pagination"] a:last-of-type',
-        // SVG arrow buttons
-        'a[href*="page="] svg[class*="arrow"]',
-        // Generic patterns
-        'nav a[href*="page="]:last-child'
+        '[class*="pagination"] a[href*="page="]:last-of-type'
       ];
 
-      for (const selector of selectors) {
+      for (const selector of paginationSelectors) {
         try {
           const nextBtn = document.querySelector(selector);
-          if (nextBtn) {
-            const link = nextBtn.closest('a') || nextBtn;
-            if (link.href && link.href !== window.location.href) {
-              console.log('[LandScraper] Found next page via selector:', selector, link.href);
-              return link.href;
+          if (nextBtn && nextBtn.href) {
+            const nextUrl = new URL(nextBtn.href, window.location.origin);
+            const nextPage = parseInt(nextUrl.searchParams.get('page') || '0');
+            
+            // Only use if it's actually the next page
+            if (nextPage === currentPage + 1) {
+              console.log('[LandScraper] Found next via selector:', selector, '-> page', nextPage);
+              return nextBtn.href;
             }
           }
         } catch (e) {
@@ -736,18 +769,14 @@
         }
       }
 
-      // Try to find any pagination link with higher page number
-      const currentUrl = new URL(window.location.href);
-      const currentPage = parseInt(currentUrl.searchParams.get('page') || '1');
-      
-      // Look for links with page numbers
-      const pageLinks = document.querySelectorAll('a[href*="page="]');
-      for (const link of pageLinks) {
+      // Method 2: Find all page links and pick the one for currentPage + 1
+      const allPageLinks = document.querySelectorAll('a[href*="page="]');
+      for (const link of allPageLinks) {
         try {
           const linkUrl = new URL(link.href, window.location.origin);
           const linkPage = parseInt(linkUrl.searchParams.get('page') || '0');
           if (linkPage === currentPage + 1) {
-            console.log('[LandScraper] Found next page via page number:', link.href);
+            console.log('[LandScraper] Found next page link:', link.href, '-> page', linkPage);
             return link.href;
           }
         } catch (e) {
@@ -755,17 +784,24 @@
         }
       }
 
-      // Fallback: URL manipulation - construct next page URL
-      const nextPage = currentPage + 1;
-      currentUrl.searchParams.set('page', nextPage.toString());
-      const newUrl = currentUrl.toString();
+      // Method 3: Construct URL manually (only if page links exist on the page)
+      // Check if there's any pagination at all
+      const hasPagination = allPageLinks.length > 0 || document.querySelector('[class*="pagination"]');
       
-      // Only return if it's actually different
-      if (newUrl !== window.location.href) {
-        console.log('[LandScraper] Using URL manipulation for next page:', newUrl);
-        return newUrl;
+      if (hasPagination) {
+        const nextPage = currentPage + 1;
+        const nextUrl = new URL(window.location.href);
+        nextUrl.searchParams.set('page', nextPage.toString());
+        
+        // Make sure we're not creating an infinite loop
+        const nextUrlStr = nextUrl.toString();
+        if (nextUrlStr !== window.location.href) {
+          console.log('[LandScraper] Constructed next page URL:', nextUrlStr);
+          return nextUrlStr;
+        }
       }
       
+      console.log('[LandScraper] No next page found');
       return null;
     },
 
@@ -976,12 +1012,17 @@
     }
 
     const cards = scraper.getListingCards();
-    log(`Found ${cards.length} listings on page`, 'info');
+    log(`Found ${cards.length} listing cards on page`, 'info');
+    console.log(`[LandScraper] Page URL: ${window.location.href}`);
+    console.log(`[LandScraper] Found ${cards.length} cards`);
     
     // Determine site type for detail page fetching
     const site = window.location.hostname.includes('ikman') ? 'ikman' : 'lpw';
 
     const listings = [];
+    let skippedLocation = 0;
+    let skippedNull = 0;
+    
     for (const card of cards) {
       const data = scraper.extractFromCard(card);
       if (data) {
@@ -990,12 +1031,17 @@
         if (filterLocations) {
           if (matchesTargetLocation(data.address) || matchesTargetLocation(data.title)) {
             shouldInclude = true;
+          } else {
+            skippedLocation++;
           }
         } else {
           shouldInclude = true;
         }
         
         if (shouldInclude) {
+          // Log the URL being added
+          console.log(`[LandScraper] Adding: ${data.url}`);
+          
           // If detail page scraping is enabled, fetch additional info
           if (scrapeDetails && data.url) {
             log(`Fetching details for: ${data.title.substring(0, 30)}...`, 'info');
@@ -1030,10 +1076,16 @@
           }
           listings.push(data);
         }
+      } else {
+        skippedNull++;
       }
     }
 
+    console.log(`[LandScraper] Summary: ${listings.length} added, ${skippedLocation} filtered by location, ${skippedNull} null/invalid`);
     log(`Extracted ${listings.length} matching listings`, 'success');
+    if (skippedLocation > 0) {
+      log(`Filtered ${skippedLocation} by location`, 'info');
+    }
     return listings;
   }
 
@@ -1045,9 +1097,19 @@
       const data = await chrome.storage.local.get(['listings']);
       const existing = data.listings || [];
       
+      console.log(`[LandScraper] Saving: ${newListings.length} new, ${existing.length} existing`);
+      
       // Deduplicate by URL
       const existingUrls = new Set(existing.map(l => l.url));
-      const uniqueNew = newListings.filter(l => !existingUrls.has(l.url));
+      const uniqueNew = newListings.filter(l => {
+        const isDupe = existingUrls.has(l.url);
+        if (isDupe) {
+          console.log(`[LandScraper] Duplicate skipped: ${l.url}`);
+        }
+        return !isDupe;
+      });
+      
+      console.log(`[LandScraper] Unique new listings: ${uniqueNew.length}`);
       
       const updated = [...existing, ...uniqueNew];
       await chrome.storage.local.set({ listings: updated });
@@ -1093,14 +1155,24 @@
   async function goToNextPage() {
     const scraper = getScraper();
     if (!scraper) return false;
+    
+    // Mark current page as visited
+    const currentNormalized = new URL(window.location.href).toString();
+    visitedPages.add(currentNormalized);
+    console.log('[LandScraper] Visited pages count:', visitedPages.size);
 
     const nextUrl = scraper.getNextPageUrl();
     console.log('[LandScraper] Next URL:', nextUrl, 'Current:', window.location.href);
     
     if (nextUrl) {
       // Normalize URLs for comparison
-      const currentNormalized = new URL(window.location.href).toString();
       const nextNormalized = new URL(nextUrl, window.location.origin).toString();
+      
+      // Check if we've already visited this page (prevent loop)
+      if (visitedPages.has(nextNormalized)) {
+        console.log('[LandScraper] Already visited this page, stopping');
+        return false;
+      }
       
       if (nextNormalized !== currentNormalized) {
         log(`Navigating to next page...`, 'info');
@@ -1110,7 +1182,8 @@
           isScraping: true,
           filterLocations,
           scrapeDetails,
-          pageDelay: pageDelay / 1000 // Store in seconds
+          pageDelay: pageDelay / 1000, // Store in seconds
+          visitedPages: Array.from(visitedPages)  // Save visited pages to prevent loops
         });
         
         // Navigate
@@ -1195,6 +1268,10 @@
     scrapeDetails = options.scrapeDetails === true;
     pageDelay = options.pageDelay || DEFAULT_PAGE_DELAY;
     
+    // Clear visited pages when starting fresh
+    visitedPages = new Set();
+    await chrome.storage.local.set({ visitedPages: [] });
+    
     log('Scraper started', 'success');
     if (scrapeDetails) {
       log('Detail page mode: Will fetch coordinates from each listing', 'info');
@@ -1261,12 +1338,18 @@
   async function checkAndResume() {
     try {
       const data = await chrome.storage.local.get([
-        'isScraping', 'filterLocations', 'scrapeDetails', 'pageDelay', 'customLocations'
+        'isScraping', 'filterLocations', 'scrapeDetails', 'pageDelay', 'customLocations', 'visitedPages'
       ]);
       
       // Load custom locations if available
       if (data.customLocations && Array.isArray(data.customLocations)) {
         customLocations = data.customLocations.map(l => l.toLowerCase());
+      }
+      
+      // Load visited pages to prevent loops
+      if (data.visitedPages && Array.isArray(data.visitedPages)) {
+        visitedPages = new Set(data.visitedPages);
+        console.log('[LandScraper] Loaded', visitedPages.size, 'visited pages from storage');
       }
       
       if (data.isScraping) {
